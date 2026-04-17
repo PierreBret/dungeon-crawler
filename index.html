@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Dungeon Crawler</title>
+
+  <style>
+    /* ===== BASE PAGE ===== */
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: Arial;
+      overflow: hidden; /* empêche scroll */
+      user-select: none; /* empêche sélection texte */
+    }
+
+    /* ===== TITRE ===== */
+    h1 {
+      margin: 10px 0;
+      text-align: center;
+      cursor: default;
+    }
+
+    /* ===== ZONE DE JEU ===== */
+    .game-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ===== CANVAS ===== */
+    canvas {
+      background: #222;
+      border: 2px solid #555;
+      outline: none;
+      user-select: none;
+    }
+
+    /* ===== FUTUR UI (placeholder) ===== */
+    #ui {
+      margin-top: 10px;
+      font-size: 14px;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="game-container">
+
+    <h1>Dungeon Crawler</h1>
+
+    <canvas id="gameCanvas" tabindex="0"></canvas>
+
+    <div id="ui">
+      Déplacement : flèches directionnelles
+    </div>
+
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+
+</body>
+</html>
