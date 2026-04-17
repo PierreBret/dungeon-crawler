@@ -17,7 +17,7 @@ import { generateDungeon } from "./core/dungeon.js";
 import { createPlayer, movePlayer } from "./core/player.js";
 import { draw } from "./ui/render.js";
 import { drawCamp } from "./ui/camp.js";
-import { drawCharacterCreation } from "./ui/camp.js";
+import { drawCharacterCreation } from "./ui/characterCreation.js";
 
 // CONFIG
 const TILE_SIZE = 32;
@@ -37,10 +37,16 @@ console.log("canvas prêt : " + canvas.width + "x" + canvas.height);
 // INIT
 const dungeon = generateDungeon(ROWS, COLS, EXTRA_PATHS);
 const player = createPlayer(dungeon);
+console.log(player.name);
+
 let gameState = "CHARACTER_CREATION";
 let playerCreated = false;
 
 function render() {
+  if (gameState === "CHARACTER_CREATION") {
+    drawCharacterCreation(ctx);
+  }
+
   if (gameState === "EXPLORE") {
     draw(ctx, dungeon, player, TILE_SIZE);
   }
@@ -49,9 +55,6 @@ function render() {
     drawCamp(ctx, player);
   }
 
-  if (gameState === "CHARACTER_CREATION") {
-    drawCharacterCreation(ctx);
-  }
 }
 
 // DRAW INITIAL

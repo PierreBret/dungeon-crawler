@@ -25,14 +25,3 @@ export function drawCamp(ctx, player) {
   ctx.fillText("- (future) Soigner", 20, 230);
   ctx.fillText("- (future) Forger", 20, 260);
 }
-
-export function drawCharacterCreation(ctx) {
-  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
-  ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-
-  ctx.fillText("CREATION DU PERSONNAGE", 20, 50);
-
-  ctx.fillText("Appuie sur ENTER pour créer un personnage", 20, 120);
-}
