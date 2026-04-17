@@ -1,3 +1,17 @@
+/*
+  DUNGEON.JS
+
+  Logique de génération et gestion du donjon.
+
+  Rôle :
+  - Génération de la carte
+  - Définition des murs / sols
+  - Vérification des déplacements possibles
+
+  IMPORTANT :
+  Aucun code d'affichage ici (logique pure uniquement)
+*/
+
 export function generateDungeon(rows, cols, extraPath) {
   const dungeon = Array.from({ length: rows }, () => Array(cols).fill(1));
 

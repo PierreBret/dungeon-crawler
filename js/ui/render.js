@@ -1,3 +1,17 @@
+/*
+  RENDER.JS
+
+  Gestion de l'affichage du mode EXPLORATION.
+
+  Rôle :
+  - Dessiner le donjon
+  - Afficher le joueur
+  - Gérer le rendu visuel de la grille
+
+  IMPORTANT :
+  Aucun calcul de gameplay ici (uniquement affichage)
+*/
+
 export function draw(ctx, dungeon, player, tileSize) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 

@@ -1,3 +1,14 @@
+/*
+  PLAYER.JS
+
+  Logique du joueur.
+
+  Rôle :
+  - Création du joueur
+  - Gestion des déplacements
+  - Stockage des stats (HP, attaque, etc.)
+*/
+
 export function createPlayer(dungeon) {
   if (!dungeon) {
     return { x: 1, y: 1 };
