@@ -7,6 +7,8 @@
   - Padding uniforme
 */
 
+import { loadAvatar } from "../core/assets.js";
+
 export function drawCharacterCreation(ctx, candidates, selectedIndex) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
@@ -17,6 +19,8 @@ export function drawCharacterCreation(ctx, candidates, selectedIndex) {
   const padding = 20;
   const spacing = 40;
   const startY = 140;
+  const avatarSize = 150;
+  const avatarSpacing = 15;
 
   // --- TITRE ---
   ctx.fillStyle = "white";
@@ -55,9 +59,10 @@ export function drawCharacterCreation(ctx, candidates, selectedIndex) {
       if (width > maxWidth) maxWidth = width;
     }
 
-    const totalLines = 1 + statsList.length;
+    const textHeight = (1 + statsList.length) * lineHeight;
+    const imageHeight = avatarSize + avatarSpacing;
+    const blockHeight = textHeight + imageHeight + padding * 2;
     const blockWidth = maxWidth + padding * 2;
-    const blockHeight = totalLines * lineHeight + padding * 2;
 
     blocks.push({ candidate, statsList, blockWidth, blockHeight });
   }
@@ -103,6 +108,32 @@ export function drawCharacterCreation(ctx, candidates, selectedIndex) {
     ctx.fillText(candidate.name, contentX, currentY);
 
     currentY += lineHeight;
+
+    // --- AVATAR ---
+    if (!candidate.avatarImage) {
+      loadAvatar(candidate.avatarPath).then(img => {
+        candidate.avatarImage = img;
+      });
+    }
+
+    // centrage horizontal dans la carte
+    const avatarX = frameX + (blockWidth - avatarSize) / 2;
+
+    if (candidate.avatarImage) {
+      ctx.drawImage(
+        candidate.avatarImage,
+        avatarX,
+        currentY,
+        avatarSize,
+        avatarSize
+      );
+    } else {
+      // placeholder
+      ctx.fillStyle = "#222";
+      ctx.fillRect(avatarX, currentY, avatarSize, avatarSize);
+    }
+
+    currentY += avatarSize + avatarSpacing;
 
     // --- STATS ---
     ctx.font = "20px Arial";

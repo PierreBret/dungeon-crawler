@@ -3,26 +3,38 @@
 */
 
 import { movePlayer } from "./player.js";
+import { SCREENS } from "./constants.js";
 
 export function setupInput(state) {
   window.addEventListener("keydown", (e) => {
-    if (state.screen === "game") {
-      handleGameInput(state, e);
-    }
-
-    if (state.screen === "characterCreation") {
+    if (state.screen === SCREENS.DUNGEON) {
+      handleDungeonInput(state, e);
+    } else if (state.screen === SCREENS.CHARACTER_CREATION) {
       handleCharacterCreationInput(state, e);
+    } else if (state.screen === SCREENS.CAMP) {
+      handleCampInput(state, e);
     }
   });
 }
 
 // --- HANDLERS ---
+function handleCampInput(state, e) {
+  if (e.key === "c" || e.key === "C") {
+    state.screen = SCREENS.DUNGEON; // exploration
+  }
 
-function handleGameInput(state, e) {
+  if (e.key === "a" || e.key === "A") {
+    // reset / abandon
+    state.screen = SCREENS.CHARACTER_CREATION;
+  }
+}
+
+function handleDungeonInput(state, e) {
   const { player, dungeon } = state;
 
   if (!player || !dungeon) return; // sécurité
 
+  console.log("KEY:", e.key, "SCREEN:", state.screen);
   switch (e.key) {
     case "ArrowUp":
       movePlayer(player, dungeon, 0, -1);
@@ -38,6 +50,11 @@ function handleGameInput(state, e) {
 
     case "ArrowRight":
       movePlayer(player, dungeon, 1, 0);
+      break;
+
+    case "c":
+    case "C":
+      state.screen = SCREENS.CAMP;
       break;
   }
 }
@@ -68,5 +85,5 @@ function selectCandidate(state, candidate) {
   state.dungeon = dungeon;
   state.player = createPlayer(candidate, dungeon);
 
-  state.screen = "game";
+  state.screen = SCREENS.CAMP; // transition vers camp
 }

@@ -10,8 +10,30 @@
   - Stockage des stats (HP, attaque, etc.)
 */
 
+const STATS_CONFIG = {
+  dice: {
+    count: 3,
+    faces: 7
+  },
+  total: {
+    min: 77,
+    max: 91
+  },
+  maxAttempts: 1000 // sécurité anti boucle infinie
+};
+
 function getDiceRoll(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function rollDice(count, faces) {
+  let total = 0;
+
+  for (let i = 0; i < count; i++) {
+    total += getDiceRoll(1, faces);
+  }
+
+  return total;
 }
 
 function getRandomName() {
@@ -51,27 +73,69 @@ function getRandomName() {
   if (d4 === 4) return capitalize(p() + r() + s());
 }
 
-function generateRandomCandidate() {
-    return {
-    name: getRandomName(),
-    //avatar: Math.floor(Math.random() * 3), // placeholder
-    stats: {
-      force: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7), // 3d7 
-      constitution: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
-      taille: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
-      intelligence: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
-      volonté: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
-      vitesse: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
-      adresse: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7)
-    },
+import { getRandomAvatarPaths } from "./assets.js";
+
+function generateStatsRaw() {
+  return {
+    force: rollDice(STATS_CONFIG.dice.count, STATS_CONFIG.dice.faces),
+    constitution: rollDice(STATS_CONFIG.dice.count, STATS_CONFIG.dice.faces),
+    taille: rollDice(STATS_CONFIG.dice.count, STATS_CONFIG.dice.faces),
+    intelligence: rollDice(STATS_CONFIG.dice.count, STATS_CONFIG.dice.faces),
+    volonté: rollDice(STATS_CONFIG.dice.count, STATS_CONFIG.dice.faces),
+    vitesse: rollDice(STATS_CONFIG.dice.count, STATS_CONFIG.dice.faces),
+    adresse: rollDice(STATS_CONFIG.dice.count, STATS_CONFIG.dice.faces)
+  };
+}
+
+function isStatsValid(stats) {
+  const total = Object.values(stats).reduce((sum, value) => sum + value, 0);
+
+  return (
+    total >= STATS_CONFIG.total.min &&
+    total <= STATS_CONFIG.total.max
+  );
+}
+
+function generateStats() {
+  let attempts = 0;
+
+  while (attempts < STATS_CONFIG.maxAttempts) {
+    const stats = generateStatsRaw();
+    if (isStatsValid(stats)) {
+      return stats;
+    }
+    attempts++;
   }
+
+  // fallback (important pour robustesse)
+  console.warn("Stats générées hors contrainte après maxAttempts");
+
+  return generateStatsRaw();
+}
+
+function generateRandomCandidate() {
+  return {
+    name: getRandomName(),
+    avatarPath: null,
+    stats: generateStats()
+  };
 }
 
 export function generateCandidates(n) {
   const candidates = [];
+
+  // on récupère N avatars uniques
+  const avatarPaths = getRandomAvatarPaths(n);
+
   for (let i = 0; i < n; i++) {
-    candidates.push(generateRandomCandidate());
+    const candidate = generateRandomCandidate();
+
+    // on assigne l’avatar
+    candidate.avatarPath = avatarPaths[i];
+
+    candidates.push(candidate);
   }
+
   return candidates;
 }
 

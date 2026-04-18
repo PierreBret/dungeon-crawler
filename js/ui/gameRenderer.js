@@ -1,35 +1,40 @@
 /*
-  GAME RENDERER.JS
+  GAME RENDERER
 
-  Gère l'affichage du jeu selon son état
+  Gère l'affichage selon l'état du jeu
 */
 
-import { draw } from "./render.js";
+import { SCREENS } from "../core/constants.js";
+
+import { drawDungeon } from "./render.js";
 import { drawCamp } from "./camp.js";
 import { drawCharacterCreation } from "./characterCreation.js";
 
 export function renderGame(state) {
-  const { ctx, dungeon, player, TILE_SIZE, screen } = state;
+  const {
+    ctx,
+    dungeon,
+    player,
+    TILE_SIZE,
+    screen,
+    characterCreation
+  } = state;
 
   switch (screen) {
-    case "characterCreation":
+    case SCREENS.CHARACTER_CREATION:
       drawCharacterCreation(
         ctx,
-        state.characterCreation.candidates,
-        state.characterCreation.selectedIndex
+        characterCreation.candidates,
+        characterCreation.selectedIndex
       );
       break;
 
-    case "game":
-      draw(ctx, dungeon, player, TILE_SIZE);
+    case SCREENS.DUNGEON:
+      drawDungeon(ctx, dungeon, player, TILE_SIZE);
       break;
 
-    case "camp":
+    case SCREENS.CAMP:
       drawCamp(ctx, player);
-      break;
-
-    case "menu":
-      // rien pour l'instant
       break;
 
     default:

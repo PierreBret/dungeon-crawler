@@ -8,20 +8,35 @@
   - Afficher les actions disponibles (soin, forge, repos...)
   - Interface de gestion hors exploration
 */
+import { drawPlayerCard } from "./components/characterCard.js";
 
 export function drawCamp(ctx, player) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+  ctx.textBaseline = "top";
+
   ctx.fillStyle = "white";
+  ctx.font = "26px Arial";
+
+  ctx.fillText("🏕 CAMP", 50, 30);
+
+  // --- JOUEUR ---
+  const blockWidth = 300;
+  const centerX = ctx.canvas.width / 2;
+
+  drawPlayerCard(
+    ctx,
+    player,
+    centerX - blockWidth / 2,
+    100,
+    blockWidth,
+    true
+  );
+
+  // --- ACTIONS ---
   ctx.font = "20px Arial";
 
-  ctx.fillText("🏕 CAMP", 20, 40);
-
-  ctx.fillText("HP: " + player.hp + " / " + player.maxHp, 20, 80);
-  ctx.fillText("ATK: " + player.atk, 20, 110);
-
-  ctx.fillText("Actions :", 20, 160);
-  ctx.fillText("- C : retourner exploration", 20, 200);
-  ctx.fillText("- (future) Soigner", 20, 230);
-  ctx.fillText("- (future) Forger", 20, 260);
+  ctx.fillText("Actions :", 50, 500);
+  ctx.fillText("C : Continuer exploration", 50, 540);
+  ctx.fillText("A : Abandonner", 50, 570);
 }

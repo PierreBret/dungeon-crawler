@@ -4,28 +4,29 @@
   Gère la logique du jeu à chaque frame
 */
 
+import { SCREENS } from "./constants.js";
+
 export function update(state) {
   switch (state.screen) {
-    case "menu":
-      updateMenu(state);
+
+    case SCREENS.DUNGEON:
+      updateDungeon(state);
       break;
 
-    case "characterCreation":
+    case SCREENS.CAMP:
+      updateCamp(state);
+      break;
+
+    case SCREENS.CHARACTER_CREATION:
       updateCharacterCreation(state);
       break;
-
-    case "game":
-      updateGame(state);
-      break;
-
-    default:
-      console.warn("Unknown screen:", state.screen);
   }
 }
 
+
 // --- STATES ---
 
-function updateMenu(state) {
+function updateCamp(state) {
   // rien pour l'instant
 }
 
@@ -33,6 +34,6 @@ function updateCharacterCreation(state) {
   // rien pour l'instant
 }
 
-function updateGame(state) {
-  // rien pour l'instant
+function updateDungeon(state) {
+  // logique dungeon
 }

@@ -11,7 +11,7 @@
   IMPORTANT :
   Aucun calcul de gameplay ici (uniquement affichage)
 */
-export function draw(ctx, dungeon, player, tileSize) {
+export function drawDungeon(ctx, dungeon, player, tileSize) {
   // sécurité
   if (!ctx || !dungeon || !player) return;
 

@@ -55,3 +55,33 @@ export const avatarPaths = [
   "/assets/avatars/263.JPG","/assets/avatars/265.JPG","/assets/avatars/266.JPG","/assets/avatars/268.JPG",
   "/assets/avatars/269.JPG","/assets/avatars/270.JPG"
 ];
+
+export function getRandomAvatarPaths(count) {
+  const shuffled = [...avatarPaths].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
+// cache mémoire
+const avatarCache = new Map();
+
+export function loadAvatar(path) {
+  if (avatarCache.has(path)) {
+    return Promise.resolve(avatarCache.get(path));
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+
+    img.onload = () => {
+      avatarCache.set(path, img);
+      resolve(img);
+    };
+
+    img.onerror = () => {
+      console.error("Erreur chargement image :", path);
+      resolve(null);
+    };
+
+    img.src = path;
+  });
+}

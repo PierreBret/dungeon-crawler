@@ -6,7 +6,6 @@ const COLS = 20;
 const EXTRA_PATHS = 10;
 
 export const gameState = {
-    //dungeon: generateDungeon(ROWS, COLS, EXTRA_PATHS),
     dungeon: null,
     player: null,
     mode: "CHARACTER_CREATION",
