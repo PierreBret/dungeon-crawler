@@ -33,31 +33,33 @@ function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function getRandomName(size = 2) {
-  if (size === 1) {
-    const r = roots[Math.floor(Math.random() * roots.length)];
-    return capitalize(r);
-  }
-
-  if (size === 2) {
-    const usePatternA = Math.random() < 0.5;
-
-    if (usePatternA) {
+function getRandomName() {
+  const d4 = Math.floor(Math.random() * 4) + 1; // 1 à 4
+  
+  if (d4 === 1) {
       const p = prefixes[Math.floor(Math.random() * prefixes.length)];
       const r = roots[Math.floor(Math.random() * roots.length)];
       return capitalize(p + r);
-    } else {
-      const r = roots[Math.floor(Math.random() * roots.length)];
-      const s = suffixes[Math.floor(Math.random() * suffixes.length)];
-      return capitalize(r + s);
-    }
   }
 
-  // size >= 3 (par défaut)
+  if (d4 === 2) {
+    const r = roots[Math.floor(Math.random() * roots.length)];
+    const s = suffixes[Math.floor(Math.random() * suffixes.length)];
+    return capitalize(r + s);
+  }
+
+  if (d4 === 3) {
+    const p = prefixes[Math.floor(Math.random() * prefixes.length)];
+    const s = suffixes[Math.floor(Math.random() * suffixes.length)];
+    return capitalize(p + s);
+  }
+
+  if (d4 === 4) {
   const p = prefixes[Math.floor(Math.random() * prefixes.length)];
   const r = roots[Math.floor(Math.random() * roots.length)];
   const s = suffixes[Math.floor(Math.random() * suffixes.length)];
   return capitalize(p + r + s);
+  }
 }
 
 export function getStartingPosition(dungeon) {
@@ -83,11 +85,10 @@ export function getStartingPosition(dungeon) {
 }
 
 export function createPlayer(dungeon) {
-  const size = Math.floor(Math.random() * 2) + 2; // 2 ou 3
   const position = getStartingPosition(dungeon);
 
   return {
-    name: getRandomName(size),
+    name: getRandomName(),
     ...position
   };
 }
