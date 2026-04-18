@@ -10,56 +10,69 @@
   - Stockage des stats (HP, attaque, etc.)
 */
 
-const prefixes = [
-  "Ar", "Ka", "Vel", "Mor", "Al", "Bel", "Zar", "Kor",
-  "Mal", "Nor", "Var", "El", "Tor", "Sar", "Mar", "Leo",
-  "La", "El", "Pel", "Par", "An", "Hei"
-];
-
-const roots = [
-  "drak", "mor", "thal", "vorn", "mion", "kar", "lith", "dun",
-  "gar", "kor", "vel", "zar", "grim", "nor", "hal", "thorg",
-  "ram", "con", "dig", "nid", "cif", "dor", "ric", "end",
-  "ronim"
-];
-
-const suffixes = [
-  "os", "ion", "ar", "us", "en", "or", "ith", "ael",
-  "ius", "ic", "al", "ir", "iam", "an", "ath", "as", 
-  "ian", "il"
-];
-
-function capitalize(str) {
-  return str.charAt(0).toUpperCase() + str.slice(1);
+function getDiceRoll(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function getRandomName() {
-  const d4 = Math.floor(Math.random() * 4) + 1; // 1 à 4
-  
-  if (d4 === 1) {
-      const p = prefixes[Math.floor(Math.random() * prefixes.length)];
-      const r = roots[Math.floor(Math.random() * roots.length)];
-      return capitalize(p + r);
+
+  const prefixes = [
+    "Ar", "Ka", "Vel", "Mor", "Al", "Bel", "Zar", "Kor",
+    "Mal", "Nor", "Var", "El", "Tor", "Sar", "Mar", "Leo",
+    "La", "El", "Pel", "Par", "Hei"
+  ];
+
+  const roots = [
+    "drak", "mor", "thal", "vorn", "mion", "kar", "lith", "dun",
+    "gar", "kor", "vel", "zar", "grim", "nor", "hal", "thorg",
+    "ram", "con", "dig", "nid", "cif", "dor", "ric", "end",
+    "ronim"
+  ];
+
+  const suffixes = [
+    "os", "ion", "ar", "us", "en", "or", "ith", "ael",
+    "ius", "ic", "al", "ir", "iam", "an", "ath", "as", 
+    "ian", "il"
+  ];
+
+  function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
-  if (d4 === 2) {
-    const r = roots[Math.floor(Math.random() * roots.length)];
-    const s = suffixes[Math.floor(Math.random() * suffixes.length)];
-    return capitalize(r + s);
-  }
+  const d4 = getDiceRoll(1, 4);
 
-  if (d4 === 3) {
-    const p = prefixes[Math.floor(Math.random() * prefixes.length)];
-    const s = suffixes[Math.floor(Math.random() * suffixes.length)];
-    return capitalize(p + s);
-  }
+  const p = () => prefixes[Math.floor(Math.random() * prefixes.length)];
+  const r = () => roots[Math.floor(Math.random() * roots.length)];
+  const s = () => suffixes[Math.floor(Math.random() * suffixes.length)];
 
-  if (d4 === 4) {
-  const p = prefixes[Math.floor(Math.random() * prefixes.length)];
-  const r = roots[Math.floor(Math.random() * roots.length)];
-  const s = suffixes[Math.floor(Math.random() * suffixes.length)];
-  return capitalize(p + r + s);
+  if (d4 === 1) return capitalize(p() + r());
+  if (d4 === 2) return capitalize(r() + s());
+  if (d4 === 3) return capitalize(p() + s());
+  if (d4 === 4) return capitalize(p() + r() + s());
+}
+
+function generateRandomCandidate() {
+    return {
+    name: getRandomName(),
+    //avatar: Math.floor(Math.random() * 3), // placeholder
+    stats: {
+      force: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7), // 3d7 
+      constitution: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
+      taille: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
+      intelligence: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
+      volonté: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
+      vitesse: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7),
+      adresse: getDiceRoll(1,7)+getDiceRoll(1,7)+getDiceRoll(1,7)
+    },
   }
+}
+
+export function generateCandidates(n) {
+  const candidates = [];
+  for (let i = 0; i < n; i++) {
+    candidates.push(generateRandomCandidate());
+  }
+  return candidates;
 }
 
 export function getStartingPosition(dungeon) {
@@ -84,19 +97,31 @@ export function getStartingPosition(dungeon) {
   return walkableTiles[Math.floor(Math.random() * walkableTiles.length)];
 }
 
-export function createPlayer(dungeon) {
+export function createPlayer(candidate, dungeon) {
   const position = getStartingPosition(dungeon);
 
   return {
-    name: getRandomName(),
-    ...position
+    ...candidate, // 🔥 on garde stats + nom
+    x: position.x,
+    y: position.y
   };
 }
 
-export function movePlayer(player, dx, dy, dungeon) {
+export function movePlayer(player, dungeon, dx, dy) {
   const newX = player.x + dx;
   const newY = player.y + dy;
 
+  // sécurité limites
+  if (
+    newY < 0 ||
+    newY >= dungeon.length ||
+    newX < 0 ||
+    newX >= dungeon[0].length
+  ) {
+    return;
+  }
+
+  // collision
   if (dungeon[newY][newX] === 0) {
     player.x = newX;
     player.y = newY;

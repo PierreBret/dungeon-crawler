@@ -11,12 +11,14 @@
   IMPORTANT :
   Aucun calcul de gameplay ici (uniquement affichage)
 */
-
 export function draw(ctx, dungeon, player, tileSize) {
+  // sécurité
+  if (!ctx || !dungeon || !player) return;
+
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
   for (let y = 0; y < dungeon.length; y++) {
-    for (let x = 0; x < dungeon[y].length - 1; x++) {
+    for (let x = 0; x < dungeon[y].length; x++) {
       if (dungeon[y][x] === 1) {
         ctx.fillStyle = "#555";
       } else {
