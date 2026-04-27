@@ -10,6 +10,10 @@
 import { loadAvatar } from "../core/assets.js";
 
 export function drawCharacterCreation(ctx, candidates, selectedIndex) {
+
+  // Candidats pas encore reçus du serveur — on attend
+  if (!candidates || candidates.length === 0) return;
+
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
   // 🔥 IMPORTANT : baseline propre
