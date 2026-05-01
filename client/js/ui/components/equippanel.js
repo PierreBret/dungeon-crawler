@@ -75,8 +75,9 @@ export function drawEquipPanel(ctx, campState, x, y, width) {
 
   // Main gauche (physiquement à droite de la silhouette)
   const leftBlocked = rightHandItem && getWeaponDef(rightHandItem)?.hd === 2;
+  const leftFrameItem = leftBlocked ? rightHandItem : leftHandItem;
   drawHandFrame(ctx, leftFrameX, leftFrameY, FRAME_W, FRAME_H,
-    leftHandItem, "Main gauche", leftActive, leftBlocked);
+    leftFrameItem, "Main gauche", leftActive, leftBlocked);
 
   // ─── Listes déroulantes ───────────────────────────────────────────────────
 
@@ -166,10 +167,29 @@ function drawHandFrame(ctx, x, y, w, h, item, label, isActive, isBlocked) {
   ctx.fillText(label, x + w / 2, y - 8);
 
   if (isBlocked) {
-    // Croix grisée
+    if (item) {
+      const weaponDef = getWeaponDef(item);
+      if (weaponDef?.image) {
+        const img = getOrLoadImage(weaponDef.image);
+        if (img?.complete && img.naturalWidth > 0) {
+          drawItemImage(ctx, x, y, w, h, img);
+        } else {
+          drawItemPlaceholder(ctx, x, y, w, h, item);
+        }
+      } else {
+        drawItemPlaceholder(ctx, x, y, w, h, item);
+      }
+    } else {
+      ctx.fillStyle = "#333";
+      ctx.font      = "11px monospace";
+      ctx.fillText("occupé", x + w / 2, y + h / 2);
+    }
+
+    ctx.save();
+    ctx.globalAlpha = 0.6;
     ctx.strokeStyle = "#333";
-    ctx.lineWidth   = 1;
-    ctx.setLineDash([3, 3]);
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([4, 4]);
     ctx.beginPath();
     ctx.moveTo(x + 10, y + 10);
     ctx.lineTo(x + w - 10, y + h - 10);
@@ -177,6 +197,7 @@ function drawHandFrame(ctx, x, y, w, h, item, label, isActive, isBlocked) {
     ctx.lineTo(x + 10, y + h - 10);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.restore();
     ctx.restore();
     return;
   }
@@ -187,8 +208,7 @@ function drawHandFrame(ctx, x, y, w, h, item, label, isActive, isBlocked) {
     if (weaponDef?.image) {
       const img = getOrLoadImage(weaponDef.image);
       if (img?.complete && img.naturalWidth > 0) {
-        const padding = 10;
-        ctx.drawImage(img, x + padding, y + padding, w - padding * 2, h - padding * 2);
+        drawItemImage(ctx, x, y, w, h, img);
       } else {
         drawItemPlaceholder(ctx, x, y, w, h, item);
       }
@@ -207,6 +227,24 @@ function drawHandFrame(ctx, x, y, w, h, item, label, isActive, isBlocked) {
 }
 
 // ─── Placeholder texte si image absente ──────────────────────────────────────
+
+function drawItemImage(ctx, x, y, w, h, img) {
+  const padding = 10;
+  const innerW  = w - padding * 2;
+  const innerH  = h - padding * 2;
+  const ratio   = img.naturalWidth / img.naturalHeight;
+
+  let drawW = innerW;
+  let drawH = innerW / ratio;
+  if (drawH > innerH) {
+    drawH = innerH;
+    drawW = innerH * ratio;
+  }
+
+  const drawX = x + padding + (innerW - drawW) / 2;
+  const drawY = y + padding + (innerH - drawH) / 2;
+  ctx.drawImage(img, drawX, drawY, drawW, drawH);
+}
 
 function drawItemPlaceholder(ctx, x, y, w, h, item) {
   const weaponDef  = getWeaponDef(item);
@@ -403,7 +441,7 @@ export function handleEquipKeys(e, campState, equipCallback, unequipCallback, es
  */
 function getCompatibleItems(inventory, hand, _equippedItem) {
   const rightHandItem = inventory.find(i => i.equippedSlot === "rightHand");
-  const twoHanded     = rightHandItem && getWeaponDef(rightHandItem)?.hands === 2;
+  const twoHanded     = rightHandItem && getWeaponDef(rightHandItem)?.hd === 2;
 
   if (hand === "left" && twoHanded) return [];
 
@@ -444,7 +482,7 @@ const imageCache = {};
 function getOrLoadImage(path) {
   if (!imageCache[path]) {
     const img   = new Image();
-    img.src     = `/assets/${path}`;
+    img.src     = `/assets/weapons/${path}`;
     imageCache[path] = img;
   }
   return imageCache[path];
