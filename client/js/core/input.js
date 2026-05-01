@@ -22,8 +22,14 @@ export function setupInput(state) {
 
 function handleCampInput(state, e) {
   const camp = state.camp;
-  const max  = CAMP_OPTIONS.length;
 
+  // Mode inventaire — navigation séparée
+  if (camp.mode === "inventory") {
+    handleInventoryInput(state, e);
+    return;
+  }
+
+  const max = CAMP_OPTIONS.length;
   if (e.key === "ArrowDown") camp.selectedIndex = (camp.selectedIndex + 1) % max;
   if (e.key === "ArrowUp")   camp.selectedIndex = (camp.selectedIndex - 1 + max) % max;
   if (e.key === "Enter")     handleCampAction(state, camp.selectedIndex);
@@ -36,9 +42,51 @@ function handleCampAction(state, index) {
     case "explore":
       state.screen = SCREENS.DUNGEON;
       break;
-    case "rest":    state.camp.mode = "rest";                   break;
-    case "forge":   state.camp.mode = "forge";                  break;
-    case "quit":    state.screen = SCREENS.CHARACTER_CREATION;  break;
+
+    case "inventory":
+      // Charge l'inventaire depuis le serveur puis affiche
+      socket.emit("inventory:get", {}, (response) => {
+        if (!response.ok) return console.error("Erreur inventaire :", response.error);
+        state.camp.inventory      = response.inventory;
+        state.camp.inventoryIndex = 0;
+        state.camp.mode           = "inventory";
+      });
+      break;
+
+    case "rest":
+      state.camp.mode = "rest";
+      break;
+
+    case "quit":
+      state.screen = SCREENS.CHARACTER_CREATION;
+      break;
+  }
+}
+
+// ─── Inventaire ───────────────────────────────────────────────────────────────
+
+function handleInventoryInput(state, e) {
+  const camp      = state.camp;
+  const inventory = camp.inventory ?? [];
+  const max       = inventory.length;
+
+  if (e.key === "ArrowDown") {
+    camp.inventoryIndex = (camp.inventoryIndex + 1) % max;
+  }
+
+  if (e.key === "ArrowUp") {
+    camp.inventoryIndex = (camp.inventoryIndex - 1 + max) % max;
+  }
+
+  if (e.key === "Enter" && max > 0) {
+    // TODO : écran d'équipement de l'objet sélectionné
+    const item = inventory[camp.inventoryIndex];
+    console.log("Objet sélectionné :", item);
+  }
+
+  if (e.key === "Escape") {
+    camp.mode           = "menu";
+    camp.inventoryIndex = 0;
   }
 }
 
@@ -57,7 +105,6 @@ function handleDungeonInput(state, e) {
   const direction = keyMap[e.key];
 
   if (direction) {
-    // Le serveur valide le déplacement et renvoie la nouvelle position
     socket.emit("player:action", { type: "move", direction }, (response) => {
       if (!response.ok) {
         console.log(`Déplacement refusé : ${response.error}`);
@@ -67,7 +114,10 @@ function handleDungeonInput(state, e) {
     });
   }
 
-  if (e.key === "c" || e.key === "C") state.screen = SCREENS.CAMP;
+  if (e.key === "c" || e.key === "C") {
+    state.screen    = SCREENS.CAMP;
+    state.camp.mode = "menu";
+  }
 }
 
 // ─── Création de personnage ───────────────────────────────────────────────────
@@ -81,16 +131,14 @@ function handleCharacterCreationInput(state, e) {
 }
 
 function selectCandidate(state, candidate) {
-  // Le serveur génère le donjon, place le joueur, renvoie l'état initial
   socket.emit("game:start", { candidate }, (response) => {
-    console.log("response.state:", response.state); // ← ajoute
     if (!response.ok) {
       console.error(`Erreur démarrage : ${response.error}`);
       return;
     }
-    state.dungeon  = response.state.dungeon;
-    state.player   = response.state.player;
-    state.config   = response.state.config;  // ← reçoit rows/cols
-    state.screen   = SCREENS.CAMP;
+    state.dungeon = response.state.dungeon;
+    state.player  = response.state.player;
+    state.config  = response.state.config;
+    state.screen  = SCREENS.CAMP;
   });
 }

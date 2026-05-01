@@ -9,9 +9,7 @@ import db from "./database.js";
 // ─── Players ──────────────────────────────────────────────────────────────────
 
 export function createPlayer(name) {
-  const stmt = db.prepare("INSERT INTO players (name) VALUES (?)");
-  const result = stmt.run(name);
-  return result.lastInsertRowid;
+  return db.prepare("INSERT INTO players (name) VALUES (?)").run(name).lastInsertRowid;
 }
 
 export function getPlayer(id) {
@@ -28,8 +26,7 @@ export function updateNiveauMax(playerId, niveau) {
 // ─── Runs ─────────────────────────────────────────────────────────────────────
 
 export function createRun(playerId) {
-  const stmt = db.prepare("INSERT INTO runs (playerId) VALUES (?)");
-  return stmt.run(playerId).lastInsertRowid;
+  return db.prepare("INSERT INTO runs (playerId) VALUES (?)").run(playerId).lastInsertRowid;
 }
 
 export function getActiveRun(playerId) {
@@ -50,12 +47,11 @@ export function updateRunEtage(runId, etage) {
 // ─── Characters ───────────────────────────────────────────────────────────────
 
 export function createCharacter(runId, stats, hp, endurance) {
-  const stmt = db.prepare(`
+  return db.prepare(`
     INSERT INTO characters
       (runId, force, constitution, taille, intelligence, volonte, vitesse, adresse, hp, endurance)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  return stmt.run(
+  `).run(
     runId,
     stats.force, stats.constitution, stats.taille,
     stats.intelligence, stats.volonté, stats.vitesse, stats.adresse,
@@ -80,28 +76,37 @@ export function updateAugmentations(runId, augmentations) {
 // ─── Inventory ────────────────────────────────────────────────────────────────
 
 export function addItem(runId, item) {
-  const stmt = db.prepare(`
+  return db.prepare(`
     INSERT INTO inventory
       (runId, itemType, itemCode, slot, tier, material,
        aff_bestial, aff_elementaire, aff_feerique,
-       aff_demoniaque, aff_undead, aff_reptilien)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  return stmt.run(
+       aff_demoniaque, aff_undead, aff_reptilien,
+       equipped, equippedSlot)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
     runId,
-    item.itemType, item.itemCode ?? null, item.slot ?? null,
-    item.tier, item.material ?? 0,
+    item.itemType,
+    item.itemCode        ?? null,
+    item.slot            ?? null,
+    item.tier,
+    item.material        ?? 0,
     item.affinities?.bestial      ?? 0,
     item.affinities?.elementaire  ?? 0,
     item.affinities?.feerique     ?? 0,
     item.affinities?.demoniaque   ?? 0,
     item.affinities?.undead       ?? 0,
-    item.affinities?.reptilien    ?? 0
+    item.affinities?.reptilien    ?? 0,
+    item.equipped        ?? 0,
+    item.equippedSlot    ?? null
   ).lastInsertRowid;
 }
 
 export function getInventory(runId) {
   return db.prepare("SELECT * FROM inventory WHERE runId = ?").all(runId);
+}
+
+export function getEquipped(runId) {
+  return db.prepare("SELECT * FROM inventory WHERE runId = ? AND equipped = 1").all(runId);
 }
 
 export function equipItem(itemId, equippedSlot) {

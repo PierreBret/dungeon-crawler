@@ -14,6 +14,8 @@ import {
   createPlayer    as dbCreatePlayer,
   createRun       as dbCreateRun,
   createCharacter as dbCreateCharacter,
+  addItem         as dbAddItem,
+  getInventory    as dbGetInventory,
   saveFloor       as dbSaveFloor,
   updateRunStatut as dbUpdateRunStatut
 } from "./db/queries.js";
@@ -52,10 +54,22 @@ io.on("connection", (socket) => {
       const playerId = dbCreatePlayer(data.candidate.name);
       const runId    = dbCreateRun(playerId);
       const { stats } = session.player;
+
       dbCreateCharacter(runId, stats, session.player.hp, session.player.endurance);
+
+      // Équipement de départ : épée courte T1 en Bois, équipée en main droite
+      dbAddItem(runId, {
+        itemType:     "weapon",
+        itemCode:     "SH",
+        tier:         1,
+        material:     0,  // Bois
+        affinities:   { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+        equipped:     1,
+        equippedSlot: "rightHand"
+      });
+
       dbSaveFloor(runId, 1, state.dungeon);
 
-      // Stocke les IDs dans la session pour les actions futures
       session.playerId = playerId;
       session.runId    = runId;
       session.etage    = 1;
@@ -66,6 +80,19 @@ io.on("connection", (socket) => {
     }
 
     callback({ ok: true, state });
+  });
+
+  // Récupère l'inventaire du run en cours
+  socket.on("inventory:get", (data, callback) => {
+    const session = getSession(socket.id);
+    if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
+
+    try {
+      const inventory = dbGetInventory(session.runId);
+      callback({ ok: true, inventory });
+    } catch (err) {
+      callback({ ok: false, error: err.message });
+    }
   });
 
   // Action du joueur (déplacement, attaque...)
