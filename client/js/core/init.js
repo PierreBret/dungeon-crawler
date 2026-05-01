@@ -63,7 +63,6 @@ export function initGame() {
     });
 
     state.characterCreation.candidates = response.candidates;
-    console.log("Candidats reçus du serveur :", response.candidates);
   });
 
   return state;

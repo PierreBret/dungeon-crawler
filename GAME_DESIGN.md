@@ -42,8 +42,40 @@ Jeu tactique de type die-and-retry. Le combat est la conséquence des préparati
 
 ---
 
-## Structure du donjon
+## Règles de validation du code
 
+### Fonctions exportées
+Toujours valider les paramètres en entrée avec `throw new Error()` :
+```javascript
+export function maFonction(param1, callback) {
+  if (!param1)                    throw new Error("maFonction: param1 manquant");
+  if (typeof callback !== "function") throw new Error("maFonction: callback doit être une fonction");
+}
+```
+
+### Routes socket.io
+Toujours valider les données reçues avant traitement :
+```javascript
+socket.on("mon:event", (data, callback) => {
+  if (!data.itemId) {
+    console.error("[mon:event] itemId manquant :", data);
+    return callback({ ok: false, error: "itemId manquant" });
+  }
+});
+```
+
+### Fonctions internes critiques
+Logger si un résultat attendu est `undefined` :
+```javascript
+const def = gameData.weapons.find(w => w.code === item.itemCode);
+if (!def) console.error(`getWeaponDef: aucune def trouvée pour itemCode="${item.itemCode}"`);
+```
+
+### Principe général
+Valider au point d'entrée de chaque fonction publique et au point de réception
+de chaque route serveur. Transformer les bugs silencieux en erreurs explicites.
+
+## Structure du donjon
 - 100 étages
 - 4 créatures par étage (positions aléatoires à la génération)
 - 1 gardien tous les 10 étages (tier supérieur)
@@ -711,11 +743,12 @@ character
 -- Inventaire du run
 inventory
   id, runId, itemType (weapon/armor/shield), itemCode,
-  tier, materiau,
-  affinite_bestial, affinite_elementaire, affinite_feerique,
-  affinite_demoniaque, affinite_undead, affinite_reptilien,
+  tier, material,
+  aff_bestial, aff_elementaire, aff_feerique,
+  aff_demoniaque, aff_undead, aff_reptilien,
   equipped (boolean),
-  slot (rightHand/leftHand/corps/tete/bras/jambes)
+  slot (corps/tete/bras/jambes),         -- armures uniquement
+  equippedSlot (rightHand/leftHand)      -- armes et boucliers uniquement
 
 -- Étages visités du run
 floors

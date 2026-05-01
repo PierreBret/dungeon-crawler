@@ -9,6 +9,7 @@
 
 import { SCREENS, CAMP_OPTIONS } from "./constants.js";
 import { socket }                from "./socket.js";
+import { handleEquipKeys } from "../ui/components/equipPanel.js";
 
 export function setupInput(state) {
   window.addEventListener("keydown", (e) => {
@@ -24,21 +25,24 @@ function handleCampInput(state, e) {
   const camp = state.camp;
 
   // Les modes non-menu reviennent au menu avec Échap
-  if (camp.mode !== "menu") {
+if (camp.mode !== "menu") {
+  if (camp.mode === "inventory") {
     if (e.key === "Escape") {
       camp.mode           = "menu";
       camp.inventoryIndex = 0;
-      camp.equipIndex     = 0;
-      camp.equipSelectedHand = "right";
       return;
     }
-
-    // Chaque mode traite ses propres entrées
-    if (camp.mode === "inventory" || camp.mode === "equip") {
-      handleInventoryInput(state, e);
+    handleInventoryModeInput(state, e);
+  } else if (camp.mode === "equip") {
+    handleEquipModeInput(state, e);  // handleEquipKeys gère Échap lui-même
+  } else {
+    if (e.key === "Escape") {
+      camp.mode = "menu";
+      return;
     }
-    return;
   }
+  return;
+}
 
   // Mode menu — navigation des options
   const max = CAMP_OPTIONS.length;
@@ -129,33 +133,34 @@ function handleInventoryModeInput(state, e) {
 }
 
 function handleEquipModeInput(state, e) {
-  const camp      = state.camp;
-  const inventory = camp.inventory ?? [];
-  const weapons   = inventory.filter(item => item.itemType === "weapon");
-  const max       = weapons.length;
-
-  if (e.key === "Tab") {
-    camp.equipSelectedHand = camp.equipSelectedHand === "right" ? "left" : "right";
-  }
-
-  if (e.key === "ArrowDown") {
-    if (camp.equipIndex < max - 1) camp.equipIndex++;
-  }
-
-  if (e.key === "ArrowUp") {
-    if (camp.equipIndex > 0) camp.equipIndex--;
-  }
-
-  if (e.key === "Enter" && max > 0) {
-    const item = weapons[camp.equipIndex];
-    const slot = camp.equipSelectedHand === "right" ? "rightHand" : "leftHand";
-    socket.emit("inventory:equip", { itemId: item.id, slot }, (response) => {
-      if (!response.ok) console.error("Erreur equip :", response.error);
-      else socket.emit("inventory:get", {}, (res) => {
-        if (res.ok) state.camp.inventory = res.inventory;
+  handleEquipKeys(
+    e,
+    state.camp,
+    // equipCallback
+    (itemId, slot) => {
+      socket.emit("inventory:equip", { itemId, slot }, (response) => {
+        if (!response.ok) console.error("Erreur equip :", response.error);
+        else socket.emit("inventory:get", {}, (res) => {
+          if (res.ok) state.camp.inventory = res.inventory;
+        });
       });
-    });
-  }
+    },
+    // unequipCallback
+    (itemId, slot) => {
+      socket.emit("inventory:unequip", { itemId }, (response) => {
+        if (!response.ok) console.error("Erreur unequip :", response.error);
+        else socket.emit("inventory:get", {}, (res) => {
+          if (res.ok) state.camp.inventory = res.inventory;
+        });
+      });
+    },
+    // escCallback
+    () => {
+      state.camp.mode = "menu";
+      state.camp.equipIndex = 0;
+      state.camp.equipSelectedHand = "right";
+    }
+  );
 }
 
 // ─── Donjon ───────────────────────────────────────────────────────────────────
