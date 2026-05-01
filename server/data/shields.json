@@ -1,0 +1,18 @@
+[
+  { "tier": 1,  "name": "Buckler",          "weight": 1,  "reduction": 1  },
+  { "tier": 2,  "name": "Targe",            "weight": 2,  "reduction": 2  },
+  { "tier": 3,  "name": "Pelta Shield",     "weight": 3,  "reduction": 3  },
+  { "tier": 4,  "name": "Quad Shield",      "weight": 4,  "reduction": 4  },
+  { "tier": 5,  "name": "Circle Shield",    "weight": 5,  "reduction": 5  },
+  { "tier": 6,  "name": "Tower Shield",     "weight": 6,  "reduction": 6  },
+  { "tier": 7,  "name": "Spiked Shield",    "weight": 7,  "reduction": 7  },
+  { "tier": 8,  "name": "Round Shield",     "weight": 8,  "reduction": 8  },
+  { "tier": 9,  "name": "Kite Shield",      "weight": 9,  "reduction": 9  },
+  { "tier": 10, "name": "Casserole Shield", "weight": 10, "reduction": 10 },
+  { "tier": 11, "name": "Heater Shield",    "weight": 11, "reduction": 11 },
+  { "tier": 12, "name": "Oval Shield",      "weight": 12, "reduction": 12 },
+  { "tier": 13, "name": "Knight Shield",    "weight": 13, "reduction": 13 },
+  { "tier": 14, "name": "Hoplite Shield",   "weight": 14, "reduction": 14 },
+  { "tier": 15, "name": "Jazeraint Shield", "weight": 15, "reduction": 15 },
+  { "tier": 16, "name": "Dread Shield",     "weight": 16, "reduction": 16 }
+]

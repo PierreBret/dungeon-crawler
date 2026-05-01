@@ -9,6 +9,16 @@ import { Server }        from "socket.io";
 import { createSession, getSession, deleteSession } from "./state/gameState.js";
 import { handlePlayerAction } from "./game/world.js";
 import { generateCandidate }  from "./game/player.js";
+import { initSchema }         from "./db/schema.js";
+import {
+  createPlayer    as dbCreatePlayer,
+  createRun       as dbCreateRun,
+  createCharacter as dbCreateCharacter,
+  saveFloor       as dbSaveFloor,
+  updateRunStatut as dbUpdateRunStatut
+} from "./db/queries.js";
+
+initSchema();
 
 const app        = express();
 const httpServer = createServer(app);
@@ -17,7 +27,6 @@ const io = new Server(httpServer, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// Sert les fichiers statiques du client
 app.use(express.static("../client"));
 
 // ─── Socket.io ────────────────────────────────────────────────────────────────
@@ -37,8 +46,26 @@ io.on("connection", (socket) => {
   // Démarre une partie avec le candidat choisi
   socket.on("game:start", (data, callback) => {
     const session = createSession(socket.id, data.candidate);
-    console.log(`[game:start] session créée pour ${socket.id}`);
-    callback({ ok: true, state: session.getPublicState() });
+    const state   = session.getPublicState();
+
+    try {
+      const playerId = dbCreatePlayer(data.candidate.name);
+      const runId    = dbCreateRun(playerId);
+      const { stats } = session.player;
+      dbCreateCharacter(runId, stats, session.player.hp, session.player.endurance);
+      dbSaveFloor(runId, 1, state.dungeon);
+
+      // Stocke les IDs dans la session pour les actions futures
+      session.playerId = playerId;
+      session.runId    = runId;
+      session.etage    = 1;
+
+      console.log(`[game:start] playerId:${playerId} runId:${runId}`);
+    } catch (err) {
+      console.error("[game:start] Erreur DB :", err.message);
+    }
+
+    callback({ ok: true, state });
   });
 
   // Action du joueur (déplacement, attaque...)
@@ -49,12 +76,26 @@ io.on("connection", (socket) => {
     const result = handlePlayerAction(session, action);
     if (!result.ok) return callback({ ok: false, error: result.error });
 
-    callback({ ok: true, state: session.getPublicState() });
-    // Future multijoueur : socket.to(session.roomId).emit("game:state", ...)
+    const state = session.getPublicState();
+
+    try {
+      if (session.runId) {
+        dbSaveFloor(session.runId, session.etage ?? 1, state.dungeon);
+      }
+    } catch (err) {
+      console.error("[player:action] Erreur DB :", err.message);
+    }
+
+    callback({ ok: true, state });
   });
 
   // Déconnexion
   socket.on("disconnect", () => {
+    const session = getSession(socket.id);
+    if (session?.runId) {
+      try { dbUpdateRunStatut(session.runId, "actif"); }
+      catch (err) { console.error("[disconnect] Erreur DB :", err.message); }
+    }
     deleteSession(socket.id);
     console.log(`[-] Joueur déconnecté : ${socket.id}`);
   });

@@ -7,8 +7,8 @@
 
 const STATS_CONFIG = {
   dice:        { count: 3, faces: 7 },
-  total:       { min: 77, max: 91 },
-  maxAttempts: 1000
+  total:       { min: 70, max: 70 },
+  maxAttempts: 10000
 };
 
 // ─── Dés ──────────────────────────────────────────────────────────────────────
@@ -90,11 +90,14 @@ export function createPlayer(candidate, dungeon) {
   const pos   = getStartingPosition(dungeon);
   const stats = candidate.stats ?? generateStats();
 
+  // Formules définies dans le GAME_DESIGN
+  const hp        = stats.constitution * 2 + stats.taille;
+  const endurance = stats.constitution + stats.volonté;
+
   return {
     name:       candidate.name       ?? randomName(),
     avatarPath: candidate.avatarPath ?? null,
 
-    // Les clés de stats restent en français (noms affichés dans le jeu)
     stats: {
       force:        stats.force,
       constitution: stats.constitution,
@@ -105,11 +108,16 @@ export function createPlayer(candidate, dungeon) {
       adresse:      stats.adresse
     },
 
-    // Position séparée des stats
     position: {
       x: pos.x,
       y: pos.y
-    }
+    },
+
+    // Ressources de combat
+    hp,
+    hpMax:        hp,
+    endurance,
+    enduranceMax: endurance
   };
 }
 

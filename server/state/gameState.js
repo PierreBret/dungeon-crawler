@@ -15,8 +15,8 @@ const sessions = new Map();
 class GameSession {
   constructor(socketId, candidate) {
     this.socketId  = socketId;
-    this.dungeon   = generateDungeon();
-    this.player    = createPlayer(candidate, this.dungeon);
+    this.dungeon   = generateDungeon(); // { grid, creatures, forge, training, exit }
+    this.player    = createPlayer(candidate, this.dungeon.grid);
     this.screen    = "dungeon";
     this.turn      = 0;
     this.combatLog = [];
@@ -24,7 +24,13 @@ class GameSession {
 
   getPublicState() {
     return {
-      dungeon: this.dungeon,
+      dungeon: {
+        grid:      this.dungeon.grid,
+        creatures: this.dungeon.creatures,
+        forge:     this.dungeon.forge,
+        training:  this.dungeon.training,
+        exit:      this.dungeon.exit
+      },
       player: {
         name:       this.player.name,
         avatarPath: this.player.avatarPath,
@@ -36,8 +42,8 @@ class GameSession {
       combatLog: this.combatLog.slice(-20),
       // Dimensions jouables (sans les bordures de génération)
       config: {
-        rows: this.dungeon.length - 2,
-        cols: this.dungeon[0].length - 2
+        rows: this.dungeon.grid.length - 2,
+        cols: this.dungeon.grid[0].length - 2
       }
     };
   }

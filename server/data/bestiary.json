@@ -1,0 +1,37 @@
+[
+  {
+    "id": "goblin_scout",
+    "nameFr": "Gobelin éclaireur",
+    "family": "bestial",
+    "tier": 1,
+    "stats": {
+      "force":        6,
+      "constitution": 7,
+      "taille":       5,
+      "intelligence": 8,
+      "volonté":      4,
+      "vitesse":      11,
+      "adresse":      10
+    },
+    "equipment": {
+      "rightHand": { "type": "weapon", "code": "SH", "tier": 1, "material": 0, "affinities": { "bestial": 0, "elementaire": 0, "feerique": 0, "demoniaque": 0, "undead": 0, "reptilien": 0 } },
+      "leftHand":  null,
+      "corps":     { "type": "armor", "slot": "corps", "tier": 1 },
+      "tete":      { "type": "armor", "slot": "tete",  "tier": 1 },
+      "bras":      { "type": "armor", "slot": "bras",  "tier": 1 },
+      "jambes":    { "type": "armor", "slot": "jambes","tier": 1 }
+    },
+    "strategy": {
+      "min1": { "EO": 3, "NA": 7, "EN": 1 },
+      "min2": { "EO": 3, "NA": 7, "EN": 1 },
+      "min3": { "EO": 3, "NA": 7, "EN": 1 },
+      "min4": { "EO": 3, "NA": 7, "EN": 1 },
+      "min5": { "EO": 3, "NA": 7, "EN": 1 }
+    },
+    "drops": {
+      "weapon": { "code": "SH", "chance": 0.3 },
+      "armor":  null
+    },
+    "emoji": "👺"
+  }
+]
