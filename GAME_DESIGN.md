@@ -23,6 +23,15 @@ Jeu tactique de type die-and-retry. Le combat est la conséquence des préparati
 
 ---
 
+## Règles de développement
+
+- Single Source of Truth : chaque donnée n'existe qu'à un seul endroit
+- Les données statiques (armes, armures, bestiaire) viennent uniquement des fichiers JSON
+- Pas de duplication de données dans le code client ou serveur
+- Avant d'écrire du code, vérifier que la donnée n'existe pas déjà
+
+---
+
 ## Principes fondamentaux
 
 - Tout arrondi se fait avec `Math.floor` — toujours au détriment du joueur (anti sur-optimisation)

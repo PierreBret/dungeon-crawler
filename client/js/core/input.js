@@ -23,12 +23,24 @@ export function setupInput(state) {
 function handleCampInput(state, e) {
   const camp = state.camp;
 
-  // Mode inventaire — navigation séparée
-  if (camp.mode === "inventory") {
-    handleInventoryInput(state, e);
+  // Les modes non-menu reviennent au menu avec Échap
+  if (camp.mode !== "menu") {
+    if (e.key === "Escape") {
+      camp.mode           = "menu";
+      camp.inventoryIndex = 0;
+      camp.equipIndex     = 0;
+      camp.equipSelectedHand = "right";
+      return;
+    }
+
+    // Chaque mode traite ses propres entrées
+    if (camp.mode === "inventory" || camp.mode === "equip") {
+      handleInventoryInput(state, e);
+    }
     return;
   }
 
+  // Mode menu — navigation des options
   const max = CAMP_OPTIONS.length;
   if (e.key === "ArrowDown") camp.selectedIndex = (camp.selectedIndex + 1) % max;
   if (e.key === "ArrowUp")   camp.selectedIndex = (camp.selectedIndex - 1 + max) % max;
@@ -53,6 +65,17 @@ function handleCampAction(state, index) {
       });
       break;
 
+    case "equip":
+      // Charge l'inventaire depuis le serveur puis affiche
+      socket.emit("inventory:get", {}, (response) => {
+        if (!response.ok) return console.error("Erreur inventaire :", response.error);
+        state.camp.inventory       = response.inventory;
+        state.camp.equipIndex      = 0;
+        state.camp.equipSelectedHand = "right";
+        state.camp.mode            = "equip";
+      });
+      break;
+
     case "rest":
       state.camp.mode = "rest";
       break;
@@ -63,30 +86,75 @@ function handleCampAction(state, index) {
   }
 }
 
-// ─── Inventaire ───────────────────────────────────────────────────────────────
+// ─── Inventaire et Équiper ────────────────────────────────────────────────────
 
 function handleInventoryInput(state, e) {
+  const camp = state.camp;
+
+  if (camp.mode === "inventory") {
+    handleInventoryModeInput(state, e);
+  } else if (camp.mode === "equip") {
+    handleEquipModeInput(state, e);
+  }
+}
+
+function handleInventoryModeInput(state, e) {
   const camp      = state.camp;
   const inventory = camp.inventory ?? [];
   const max       = inventory.length;
 
   if (e.key === "ArrowDown") {
-    camp.inventoryIndex = (camp.inventoryIndex + 1) % max;
+    if (camp.inventoryIndex < max - 1) camp.inventoryIndex++;
   }
 
   if (e.key === "ArrowUp") {
-    camp.inventoryIndex = (camp.inventoryIndex - 1 + max) % max;
+    if (camp.inventoryIndex > 0) camp.inventoryIndex--;
   }
 
   if (e.key === "Enter" && max > 0) {
-    // TODO : écran d'équipement de l'objet sélectionné
     const item = inventory[camp.inventoryIndex];
-    console.log("Objet sélectionné :", item);
+    // Jeter seulement si l'item n'est pas équippé
+    if (!item.equipped) {
+      socket.emit("inventory:drop", { itemId: item.id }, (response) => {
+        if (!response.ok) console.error("Erreur drop :", response.error);
+        else socket.emit("inventory:get", {}, (res) => {
+          if (res.ok) {
+            state.camp.inventory = res.inventory;
+            state.camp.inventoryIndex = Math.min(camp.inventoryIndex, res.inventory.length - 1);
+          }
+        });
+      });
+    }
+  }
+}
+
+function handleEquipModeInput(state, e) {
+  const camp      = state.camp;
+  const inventory = camp.inventory ?? [];
+  const weapons   = inventory.filter(item => item.itemType === "weapon");
+  const max       = weapons.length;
+
+  if (e.key === "Tab") {
+    camp.equipSelectedHand = camp.equipSelectedHand === "right" ? "left" : "right";
   }
 
-  if (e.key === "Escape") {
-    camp.mode           = "menu";
-    camp.inventoryIndex = 0;
+  if (e.key === "ArrowDown") {
+    if (camp.equipIndex < max - 1) camp.equipIndex++;
+  }
+
+  if (e.key === "ArrowUp") {
+    if (camp.equipIndex > 0) camp.equipIndex--;
+  }
+
+  if (e.key === "Enter" && max > 0) {
+    const item = weapons[camp.equipIndex];
+    const slot = camp.equipSelectedHand === "right" ? "rightHand" : "leftHand";
+    socket.emit("inventory:equip", { itemId: item.id, slot }, (response) => {
+      if (!response.ok) console.error("Erreur equip :", response.error);
+      else socket.emit("inventory:get", {}, (res) => {
+        if (res.ok) state.camp.inventory = res.inventory;
+      });
+    });
   }
 }
 

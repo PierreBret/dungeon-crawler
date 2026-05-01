@@ -1,17 +1,21 @@
 /*
   MAIN.JS
-
-  Point d’entrée du jeu.
+  Point d'entrée du jeu.
 */
 
-import { initGame } from "./core/init.js";
-import { setupInput } from "./core/input.js";
-import { renderGame } from "./ui/gameRenderer.js";
-import { update } from "./core/update.js"; // ⚠️ à créer ou adapter
+import { initGame }      from "./core/init.js";
+import { setupInput }    from "./core/input.js";
+import { renderGame }    from "./ui/gameRenderer.js";
+import { update }        from "./core/update.js";
+import { loadGameData }  from "./core/gameData.js";
 
 let gameState;
 
-window.onload = () => {
+window.onload = async () => {
+  // Charge les données statiques (armes, armures, boucliers, bestiaire)
+  // depuis l'API serveur — source de vérité unique
+  await loadGameData();
+
   gameState = initGame();
   setupInput(gameState);
   gameLoop();

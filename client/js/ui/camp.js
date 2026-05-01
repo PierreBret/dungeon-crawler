@@ -3,8 +3,9 @@
   Interface du mode CAMP.
 */
 
-import { CAMP_OPTIONS } from "../core/constants.js";
-import { drawPlayerCard } from "./components/characterCard.js";
+import { CAMP_OPTIONS }        from "../core/constants.js";
+import { drawPlayerCard }      from "./components/characterCard.js";
+import { gameData, MATERIALS } from "../core/gameData.js";
 
 export function drawCamp(ctx, player, campState = {}) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -42,18 +43,17 @@ function drawRightPanel(ctx, campState, leftWidth, padding, canvasWidth, canvasH
   ctx.fillStyle = "#1a1a1a";
   ctx.fillRect(x, 0, width, canvasHeight);
 
-  // Titre
   const MODE_LABELS = {
     menu:      "Campement",
     rest:      "Repos",
-    inventory: "Inventaire"
+    inventory: "Inventaire",
+    equip:     "Équiper"
   };
 
   ctx.fillStyle = "white";
   ctx.font      = "bold 30px Arial";
   ctx.fillText(MODE_LABELS[campState.mode] ?? "Camp", x + padding, padding);
 
-  // Séparateur
   ctx.strokeStyle = "#444";
   ctx.lineWidth   = 1;
   ctx.beginPath();
@@ -66,6 +66,9 @@ function drawRightPanel(ctx, campState, leftWidth, padding, canvasWidth, canvasH
   switch (campState.mode) {
     case "inventory":
       drawInventoryPanel(ctx, campState, x + padding, contentY, width - padding * 2);
+      break;
+    case "equip":
+      drawEquipPanel(ctx, campState, x + padding, contentY, width - padding * 2);
       break;
     case "rest":
       drawRestPanel(ctx, x + padding, contentY);
@@ -81,8 +84,8 @@ function drawRightPanel(ctx, campState, leftWidth, padding, canvasWidth, canvasH
 function drawMainMenu(ctx, x, y, campState) {
   ctx.font = "20px Arial";
 
-  const lineHeight  = 40;
-  const optionWidth = 300;
+  const lineHeight   = 40;
+  const optionWidth  = 300;
   const optionHeight = 30;
 
   for (let i = 0; i < CAMP_OPTIONS.length; i++) {
@@ -106,6 +109,10 @@ function drawRestPanel(ctx, x, y) {
   ctx.fillStyle = "#888";
   ctx.font      = "18px Arial";
   ctx.fillText("Fonctionnalité à venir...", x, y);
+
+  ctx.fillStyle = "#555";
+  ctx.font      = "14px Arial";
+  ctx.fillText("Échap retour", x, y + 40);
 }
 
 // ─── Inventaire ───────────────────────────────────────────────────────────────
@@ -120,57 +127,177 @@ function drawInventoryPanel(ctx, campState, x, y, width) {
     return;
   }
 
-  ctx.font = "16px Arial";
+  ctx.font = "18px Arial";
+  const lineHeight = 32;
+  const maxHeight  = 500; // Hauteur maximale de la zone visible
+  const maxItems   = Math.floor(maxHeight / lineHeight); // Nombre d'items visibles
+  const scroll     = campState.inventoryScroll ?? 0;
 
-  const lineHeight = 30;
-  const colWidth   = Math.floor(width / 2);
+  // Calcule l'offset de scroll pour garder l'item sélectionné visible
+  const selectedIndex = campState.inventoryIndex ?? 0;
+  let newScroll = scroll;
+  if (selectedIndex < newScroll) {
+    newScroll = selectedIndex;
+  } else if (selectedIndex >= newScroll + maxItems) {
+    newScroll = selectedIndex - maxItems + 1;
+  }
+  campState.inventoryScroll = newScroll;
 
-  // En-têtes
-  ctx.fillStyle = "#aaa";
-  ctx.fillText("Objet", x, y);
-  ctx.fillText("Tier / Matériau", x + colWidth, y);
-  y += lineHeight;
-
-  // Séparateur
-  ctx.strokeStyle = "#333";
+  // Zone visible avec bordure
+  ctx.strokeStyle = "#444";
   ctx.lineWidth   = 1;
+  ctx.strokeRect(x - 8, y - 4, width + 16, maxHeight);
+
+  // Clipping pour limiter le rendu à la zone visible
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + width, y);
-  ctx.stroke();
-  y += 8;
+  ctx.rect(x - 8, y - 4, width + 16, maxHeight);
+  ctx.clip();
 
-  const MATERIALS = ["Bois", "Cuivre", "Étain", "Bronze", "Fer", "Fonte", "Acier", "Acier dam."];
-
-  for (let i = 0; i < inventory.length; i++) {
-    const item    = inventory[i];
-    const isSelected = i === campState.inventoryIndex;
+  let itemY = y;
+  for (let i = newScroll; i < Math.min(newScroll + maxItems, inventory.length); i++) {
+    const item       = inventory[i];
+    const isSelected = i === selectedIndex;
 
     if (isSelected) {
       ctx.fillStyle = "#333";
-      ctx.fillRect(x - 8, y - 4, width + 16, lineHeight - 4);
+      ctx.fillRect(x - 8, itemY - 4, width + 16, lineHeight - 4);
       ctx.fillStyle = "yellow";
     } else {
       ctx.fillStyle = item.equipped ? "#7ec8e3" : "white";
     }
 
-    // Nom de l'objet
-    const label = item.itemCode
-      ? `${item.itemCode} T${item.tier}`
-      : `${item.slot ?? "?"} T${item.tier}`;
+    // Nom lisible depuis gameData — pas de duplication
+    let label = getItemLabel(item);
 
-    ctx.fillText(label + (item.equipped ? " ✓" : ""), x, y);
+    if (item.equipped) label += " ✓";
 
-    // Matériau (armes uniquement)
-    if (item.itemType === "weapon") {
-      ctx.fillText(MATERIALS[item.material] ?? "?", x + colWidth, y);
-    }
-
-    y += lineHeight;
+    ctx.fillText(label, x, itemY);
+    itemY += lineHeight;
   }
 
-  // Instruction
+  ctx.restore();
+
+  // Indicateur de scroll
+  if (inventory.length > maxItems) {
+    const scrollY = y + (newScroll / inventory.length) * maxHeight;
+    const scrollHeight = (maxItems / inventory.length) * maxHeight;
+    ctx.fillStyle = "#666";
+    ctx.fillRect(x + width + 10, scrollY, 4, scrollHeight);
+  }
+
   ctx.fillStyle = "#555";
   ctx.font      = "14px Arial";
-  ctx.fillText("↑↓ naviguer  •  Entrée équiper  •  Échap retour", x, y + 10);
+  ctx.fillText("↑↓ naviguer  •  Entrée jeter (non équippé)  •  Échap retour", x, y + maxHeight + 20);
+}
+
+// ─── Équiper ──────────────────────────────────────────────────────────────────
+
+function drawEquipPanel(ctx, campState, x, y, width) {
+  const inventory = campState.inventory ?? [];
+
+  // Afficher les mains
+  ctx.fillStyle = "white";
+  ctx.font      = "20px Arial";
+
+  const rightHand = inventory.find(item => item.equippedSlot === "rightHand");
+  const leftHand  = inventory.find(item => item.equippedSlot === "leftHand");
+
+  const rightLabel = rightHand ? getItemLabel(rightHand) : "Vide";
+  const leftLabel  = leftHand ? getItemLabel(leftHand) : "Vide";
+
+  const handY = y;
+  ctx.fillText(`Main droite: ${rightLabel}`, x, handY);
+  ctx.fillText(`Main gauche: ${leftLabel}`, x, handY + 30);
+
+  // Sélection de main
+  const selectedHand = campState.equipSelectedHand ?? "right";
+  const handIndex = selectedHand === "right" ? 0 : 1;
+  ctx.strokeStyle = "yellow";
+  ctx.lineWidth = 2;
+  const rectY = handY + handIndex * 30 - 5;
+  ctx.strokeRect(x - 10, rectY, width, 25);
+
+  // Liste des armes
+  const listY = handY + 80;
+  ctx.fillStyle = "white";
+  ctx.font      = "18px Arial";
+  ctx.fillText("Armes disponibles:", x, listY);
+
+  const weapons = inventory.filter(item => item.itemType === "weapon");
+  if (weapons.length === 0) {
+    ctx.fillStyle = "#888";
+    ctx.fillText("Aucune arme", x, listY + 30);
+    return;
+  }
+
+  const lineHeight = 32;
+  const maxHeight  = 500; // Hauteur maximale de la zone visible
+  const maxItems   = Math.floor(maxHeight / lineHeight); // Nombre d'items visibles
+  const scroll     = campState.equipScroll ?? 0;
+
+  // Calcule l'offset de scroll pour garder l'item sélectionné visible
+  const selectedIndex = campState.equipIndex ?? 0;
+  let newScroll = scroll;
+  if (selectedIndex < newScroll) {
+    newScroll = selectedIndex;
+  } else if (selectedIndex >= newScroll + maxItems) {
+    newScroll = selectedIndex - maxItems + 1;
+  }
+  campState.equipScroll = newScroll;
+
+  // Zone visible avec bordure
+  const listContentY = listY + 40;
+  ctx.strokeStyle = "#444";
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(x - 8, listContentY - 4, width + 16, maxHeight);
+
+  // Clipping pour limiter le rendu à la zone visible
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - 8, listContentY - 4, width + 16, maxHeight);
+  ctx.clip();
+
+  let itemY = listContentY;
+  for (let i = newScroll; i < Math.min(newScroll + maxItems, weapons.length); i++) {
+    const item       = weapons[i];
+    const isSelected = i === selectedIndex;
+
+    if (isSelected) {
+      ctx.fillStyle = "#333";
+      ctx.fillRect(x - 8, itemY - 4, width + 16, lineHeight - 4);
+      ctx.fillStyle = "yellow";
+    } else {
+      ctx.fillStyle = item.equipped ? "#7ec8e3" : "white";
+    }
+
+    const label = getItemLabel(item);
+    ctx.fillText(label, x, itemY);
+    itemY += lineHeight;
+  }
+
+  ctx.restore();
+
+  // Indicateur de scroll
+  if (weapons.length > maxItems) {
+    const scrollY = listContentY + (newScroll / weapons.length) * maxHeight;
+    const scrollHeight = (maxItems / weapons.length) * maxHeight;
+    ctx.fillStyle = "#666";
+    ctx.fillRect(x + width + 10, scrollY, 4, scrollHeight);
+  }
+
+  ctx.fillStyle = "#555";
+  ctx.font      = "14px Arial";
+  ctx.fillText("Tab changer main  •  ↑↓ naviguer  •  Entrée équiper  •  Échap retour", x, listContentY + maxHeight + 20);
+}
+
+function getItemLabel(item) {
+  if (item.itemType === "weapon") {
+    const weaponDef  = gameData.weapons.find(w => w.code === item.itemCode);
+    const modelIndex = item.tier - 1;
+    const weaponName = weaponDef?.models?.[modelIndex] ?? item.itemCode;
+    const matName    = MATERIALS[item.material] ?? "?";
+    return `${weaponName} en ${matName}`;
+  }
+  return `${item.slot ?? "?"} T${item.tier}`;
 }
