@@ -42,6 +42,28 @@ Jeu tactique de type die-and-retry. Le combat est la conséquence des préparati
 
 ---
 
+## Conventions de code
+
+Tous les noms des fichiers js sont en minuscule
+
+### Fonctions passées en paramètre
+Toujours nommer les fonctions passées en argument — jamais de fonctions anonymes.
+Les fonctions anonymes sont invisibles pour l'IDE (Ctrl+Shift+O) et difficiles à débugger.
+
+```javascript
+// ❌ Interdit — fonction anonyme, invisible pour l'IDE
+handleEquipKeys(e, state.camp, (itemId, slot) => { ... });
+
+// ✅ Correct — fonction nommée, trouvable et débugable
+function onEquip(itemId, slot) { ... }
+handleEquipKeys(e, state.camp, onEquip);
+```
+
+Les fonctions locales à une autre fonction sont autorisées si elles ont un nom
+et accèdent au scope parent (closure) — c'est le cas typique des callbacks socket.
+
+---
+
 ## Règles de validation du code
 
 ### Fonctions exportées

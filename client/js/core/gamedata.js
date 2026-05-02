@@ -6,21 +6,22 @@
   Ne jamais dupliquer ces données ailleurs dans le client.
 
   Usage :
-    import { gameData, MATERIALS } from "./gameData.js";
-    const weapon = gameData.weapons.find(w => w.code === "SH");
-    const matName = MATERIALS[item.material];
+    import { gameData, MATERIALS, getMaterialMod } from "./gameData.js";
+    const weapon  = gameData.weapons.find(w => w.code === "SH");
+    const matName = MATERIALS[item.material].name;
+    const modMat  = MATERIALS[item.material].modMat;
 */
 
-// Matériaux — liste fixe définie dans le GAME_DESIGN
+// Matériaux — index = valeur stockée en BDD (0-7)
 export const MATERIALS = [
-  "Bois",       // 0
-  "Cuivre",     // 1
-  "Étain",      // 2
-  "Bronze",     // 3
-  "Fer",        // 4
-  "Fonte",      // 5
-  "Acier",      // 6
-  "Acier damascène" // 7
+  { name: "Bois",             modMat: 1.000 },  // 0
+  { name: "Cuivre",           modMat: 1.250 },  // 1
+  { name: "Étain",            modMat: 1.375 },  // 2
+  { name: "Bronze",           modMat: 1.500 },  // 3
+  { name: "Fer",              modMat: 1.625 },  // 4
+  { name: "Fonte",            modMat: 1.750 },  // 5
+  { name: "Acier",            modMat: 1.875 },  // 6
+  { name: "Acier damascène",  modMat: 2.000 },  // 7
 ];
 
 export const gameData = {

@@ -9,13 +9,13 @@
 
 import { SCREENS, CAMP_OPTIONS } from "./constants.js";
 import { socket }                from "./socket.js";
-import { handleEquipKeys } from "../ui/components/equipPanel.js";
+import { handleEquipKeys }       from "../ui/components/equipPanel.js";
 
 export function setupInput(state) {
   window.addEventListener("keydown", (e) => {
-    if      (state.screen === SCREENS.DUNGEON)             handleDungeonInput(state, e);
-    else if (state.screen === SCREENS.CHARACTER_CREATION)  handleCharacterCreationInput(state, e);
-    else if (state.screen === SCREENS.CAMP)                handleCampInput(state, e);
+    if      (state.screen === SCREENS.DUNGEON)            handleDungeonInput(state, e);
+    else if (state.screen === SCREENS.CHARACTER_CREATION) handleCharacterCreationInput(state, e);
+    else if (state.screen === SCREENS.CAMP)               handleCampInput(state, e);
   });
 }
 
@@ -24,25 +24,24 @@ export function setupInput(state) {
 function handleCampInput(state, e) {
   const camp = state.camp;
 
-  // Les modes non-menu reviennent au menu avec Échap
-if (camp.mode !== "menu") {
-  if (camp.mode === "inventory") {
-    if (e.key === "Escape") {
-      camp.mode           = "menu";
-      camp.inventoryIndex = 0;
-      return;
+  if (camp.mode !== "menu") {
+    if (camp.mode === "inventory") {
+      if (e.key === "Escape" && !camp.inventoryConfirm) {
+        camp.mode           = "menu";
+        camp.inventoryIndex = 0;
+        return;
+      }
+      handleInventoryModeInput(state, e);
+    } else if (camp.mode === "equip") {
+      handleEquipModeInput(state, e);
+    } else {
+      if (e.key === "Escape") {
+        camp.mode = "menu";
+        return;
+      }
     }
-    handleInventoryModeInput(state, e);
-  } else if (camp.mode === "equip") {
-    handleEquipModeInput(state, e);  // handleEquipKeys gère Échap lui-même
-  } else {
-    if (e.key === "Escape") {
-      camp.mode = "menu";
-      return;
-    }
+    return;
   }
-  return;
-}
 
   // Mode menu — navigation des options
   const max = CAMP_OPTIONS.length;
@@ -60,23 +59,23 @@ function handleCampAction(state, index) {
       break;
 
     case "inventory":
-      // Charge l'inventaire depuis le serveur puis affiche
-      socket.emit("inventory:get", {}, (response) => {
+      socket.emit("inventory:get", {}, function onInventoryLoaded(response) {
         if (!response.ok) return console.error("Erreur inventaire :", response.error);
         state.camp.inventory      = response.inventory;
         state.camp.inventoryIndex = 0;
+        state.camp.inventoryConfirm       = null;
+        state.camp.inventoryConfirmChoice = 1;
         state.camp.mode           = "inventory";
       });
       break;
 
     case "equip":
-      // Charge l'inventaire depuis le serveur puis affiche
-      socket.emit("inventory:get", {}, (response) => {
+      socket.emit("inventory:get", {}, function onInventoryLoaded(response) {
         if (!response.ok) return console.error("Erreur inventaire :", response.error);
-        state.camp.inventory       = response.inventory;
-        state.camp.equipIndex      = 0;
+        state.camp.inventory         = response.inventory;
+        state.camp.equipIndex        = 0;
         state.camp.equipSelectedHand = "right";
-        state.camp.mode            = "equip";
+        state.camp.mode              = "equip";
       });
       break;
 
@@ -90,20 +89,18 @@ function handleCampAction(state, index) {
   }
 }
 
-// ─── Inventaire et Équiper ────────────────────────────────────────────────────
-
-function handleInventoryInput(state, e) {
-  const camp = state.camp;
-
-  if (camp.mode === "inventory") {
-    handleInventoryModeInput(state, e);
-  } else if (camp.mode === "equip") {
-    handleEquipModeInput(state, e);
-  }
-}
+// ─── Inventaire ───────────────────────────────────────────────────────────────
 
 function handleInventoryModeInput(state, e) {
-  const camp      = state.camp;
+  const camp = state.camp;
+
+  // ─── Mode confirmation ────────────────────────────────────────────────────
+  if (camp.inventoryConfirm) {
+    handleInventoryConfirmInput(state, e);
+    return;
+  }
+
+  // ─── Navigation normale ───────────────────────────────────────────────────
   const inventory = camp.inventory ?? [];
   const max       = inventory.length;
 
@@ -117,50 +114,88 @@ function handleInventoryModeInput(state, e) {
 
   if (e.key === "Enter" && max > 0) {
     const item = inventory[camp.inventoryIndex];
-    // Jeter seulement si l'item n'est pas équippé
-    if (!item.equipped) {
-      socket.emit("inventory:drop", { itemId: item.id }, (response) => {
-        if (!response.ok) console.error("Erreur drop :", response.error);
-        else socket.emit("inventory:get", {}, (res) => {
-          if (res.ok) {
-            state.camp.inventory = res.inventory;
-            state.camp.inventoryIndex = Math.min(camp.inventoryIndex, res.inventory.length - 1);
-          }
-        });
-      });
+    if (!item) {
+      console.error("handleInventoryModeInput: item introuvable à l'index", camp.inventoryIndex);
+      return;
+    }
+    // Ouvrir confirmation seulement si l'item n'est pas équipé
+    if (!item.equipped && !item.equippedSlot) {
+      camp.inventoryConfirm       = item;
+      camp.inventoryConfirmChoice = 1; // Non par défaut
     }
   }
 }
 
-function handleEquipModeInput(state, e) {
-  handleEquipKeys(
-    e,
-    state.camp,
-    // equipCallback
-    (itemId, slot) => {
-      socket.emit("inventory:equip", { itemId, slot }, (response) => {
-        if (!response.ok) console.error("Erreur equip :", response.error);
-        else socket.emit("inventory:get", {}, (res) => {
-          if (res.ok) state.camp.inventory = res.inventory;
-        });
+function handleInventoryConfirmInput(state, e) {
+  const camp = state.camp;
+
+  if (e.key === "ArrowLeft") {
+    camp.inventoryConfirmChoice = 0; // Oui
+  }
+
+  if (e.key === "ArrowRight") {
+    camp.inventoryConfirmChoice = 1; // Non
+  }
+
+  if (e.key === "Enter") {
+    if (camp.inventoryConfirmChoice === 0) {
+      // Confirme la suppression
+      const item = camp.inventoryConfirm;
+      if (!item?.id) {
+        console.error("handleInventoryConfirmInput: item ou id manquant", item);
+        camp.inventoryConfirm = null;
+        return;
+      }
+      socket.emit("inventory:drop", { itemId: item.id }, function onDropResponse(response) {
+        if (!response.ok) {
+          console.error("Erreur drop :", response.error);
+        } else {
+          socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
+            if (res.ok) {
+              state.camp.inventory      = res.inventory;
+              state.camp.inventoryIndex = Math.min(camp.inventoryIndex, res.inventory.length - 1);
+            }
+          });
+        }
       });
-    },
-    // unequipCallback
-    (itemId, slot) => {
-      socket.emit("inventory:unequip", { itemId }, (response) => {
-        if (!response.ok) console.error("Erreur unequip :", response.error);
-        else socket.emit("inventory:get", {}, (res) => {
-          if (res.ok) state.camp.inventory = res.inventory;
-        });
-      });
-    },
-    // escCallback
-    () => {
-      state.camp.mode = "menu";
-      state.camp.equipIndex = 0;
-      state.camp.equipSelectedHand = "right";
     }
-  );
+    // Dans les deux cas (Oui ou Non) — fermer le dialog
+    camp.inventoryConfirm       = null;
+    camp.inventoryConfirmChoice = 1;
+  }
+
+  // Échap ne fait rien en mode confirmation (intentionnel)
+}
+
+// ─── Équiper ──────────────────────────────────────────────────────────────────
+
+function handleEquipModeInput(state, e) {
+
+  function onEquip(itemId, slot, itemCode) {
+    socket.emit("inventory:equip", { itemId, slot, itemCode }, function onEquipResponse(response) {
+      if (!response.ok) console.error("Erreur equip :", response.error);
+      else socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
+        if (res.ok) state.camp.inventory = res.inventory;
+      });
+    });
+  }
+
+  function onUnequip(itemId, slot) {
+    socket.emit("inventory:unequip", { itemId }, function onUnequipResponse(response) {
+      if (!response.ok) console.error("Erreur unequip :", response.error);
+      else socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
+        if (res.ok) state.camp.inventory = res.inventory;
+      });
+    });
+  }
+
+  function onEscape() {
+    state.camp.mode              = "menu";
+    state.camp.equipIndex        = 0;
+    state.camp.equipSelectedHand = "right";
+  }
+
+  handleEquipKeys(e, state.camp, onEquip, onUnequip, onEscape);
 }
 
 // ─── Donjon ───────────────────────────────────────────────────────────────────
@@ -178,7 +213,7 @@ function handleDungeonInput(state, e) {
   const direction = keyMap[e.key];
 
   if (direction) {
-    socket.emit("player:action", { type: "move", direction }, (response) => {
+    socket.emit("player:action", { type: "move", direction }, function onMoveResponse(response) {
       if (!response.ok) {
         console.log(`Déplacement refusé : ${response.error}`);
         return;
@@ -204,7 +239,7 @@ function handleCharacterCreationInput(state, e) {
 }
 
 function selectCandidate(state, candidate) {
-  socket.emit("game:start", { candidate }, (response) => {
+  socket.emit("game:start", { candidate }, function onGameStartResponse(response) {
     if (!response.ok) {
       console.error(`Erreur démarrage : ${response.error}`);
       return;

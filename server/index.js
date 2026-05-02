@@ -38,7 +38,7 @@ const io = new Server(httpServer, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-app.use(express.static("../client"));
+app.use(express.static(join(__dirname, "..", "client")));
 
 // ─── API REST — données statiques ─────────────────────────────────────────────
 // Source de vérité unique : les fichiers JSON dans server/data/
@@ -115,10 +115,22 @@ io.on("connection", (socket) => {
   });
 
   socket.on("inventory:equip", (data, callback) => {
+    if (!data.itemId || !data.slot) {
+      console.error("[inventory:equip] données manquantes :", data);
+      return callback({ ok: false, error: "données manquantes" });
+    }
     const session = getSession(socket.id);
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
     try {
+      // Vider le slot cible
       dbUnequipSlot(session.runId, data.slot);
+
+      // Si arme 2 mains — vider aussi la main gauche
+      const weaponDef = weapons.find(w => w.code === data.itemCode);
+      if (weaponDef?.hd === 2) {
+        dbUnequipSlot(session.runId, "leftHand");
+      }
+
       dbEquipItem(data.itemId, data.slot);
       callback({ ok: true });
     } catch (err) {
@@ -178,4 +190,13 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
+
+httpServer.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} déjà utilisé. Arrêtez l'autre instance ou changez le PORT.`);
+    process.exit(1);
+  }
+  throw err;
+});
+
 httpServer.listen(PORT, () => console.log(`Serveur lancé sur http://localhost:${PORT}`));
