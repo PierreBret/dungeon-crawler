@@ -3,6 +3,7 @@
   Point d'entrée du serveur.
 */
 
+import "dotenv/config";
 import express           from "express";
 import { createServer }  from "http";
 import { Server }        from "socket.io";
@@ -11,7 +12,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createSession, getSession, deleteSession } from "./state/gameState.js";
 import { handlePlayerAction } from "./game/world.js";
-import { generateCandidate }  from "./game/player.js";
+import { generateCandidate, rollDie } from "./game/player.js";
 import { initSchema }         from "./db/schema.js";
 import {
   createPlayer    as dbCreatePlayer,
@@ -19,17 +20,22 @@ import {
   createCharacter as dbCreateCharacter,
   addItem         as dbAddItem,
   getInventory    as dbGetInventory,
+  getCharacter    as dbGetCharacter,
   equipItem       as dbEquipItem,
   unequipItem     as dbUnequipItem,
   unequipSlot     as dbUnequipSlot,
   removeItem      as dbRemoveItem,
   saveFloor       as dbSaveFloor,
   updateRunStatut as dbUpdateRunStatut,
-  getCharacter    as dbGetCharacter,
   incrementStat   as dbIncrementStat
 } from "./db/queries.js";
 
 initSchema();
+
+// ─── Mode développement ───────────────────────────────────────────────────────
+// Défini dans .env : DEV_MODE=true → mode test, DEV_MODE=false → mode normal
+const DEV_MODE = process.env.DEV_MODE === "true";
+console.log(`[Config] DEV_MODE = ${DEV_MODE}`);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -43,8 +49,6 @@ const io = new Server(httpServer, {
 app.use(express.static(join(__dirname, "..", "client")));
 
 // ─── API REST — données statiques ─────────────────────────────────────────────
-// Source de vérité unique : les fichiers JSON dans server/data/
-// Le client charge ces données au démarrage via fetch
 
 function loadJSON(filename) {
   return JSON.parse(readFileSync(join(__dirname, "data", filename), "utf8"));
@@ -63,29 +67,55 @@ io.on("connection", (socket) => {
   console.log(`[+] Joueur connecté : ${socket.id}`);
 
   socket.on("game:candidates", (data, callback) => {
+    if (!data?.count) {
+      console.error("[game:candidates] count manquant");
+      return callback({ ok: false, error: "count manquant" });
+    }
     const candidates = [];
     for (let i = 0; i < data.count; i++) candidates.push(generateCandidate());
     callback({ ok: true, candidates });
   });
 
   socket.on("game:start", (data, callback) => {
+    if (!data?.candidate) {
+      console.error("[game:start] candidate manquant");
+      return callback({ ok: false, error: "candidate manquant" });
+    }
+
     const session = createSession(socket.id, data.candidate);
-    const state   = session.getPublicState();
+
+    // Transmettre devMode au client dans le state initial
+    const state = session.getPublicState();
+    state.devMode = DEV_MODE;
 
     try {
       const playerId = dbCreatePlayer(data.candidate.name);
       const runId    = dbCreateRun(playerId);
       const { stats } = session.player;
 
-      dbCreateCharacter(runId, stats, session.player.hp, session.player.endurance);
+      dbCreateCharacter(runId, stats, 0, 0); // hp/endurance non utilisés pour l'instant
 
-      // Ajouter une arme de chaque type à l'inventaire
-      for (const weapon of weapons) {
+      // ─── Armes de départ selon le mode ───────────────────────────────────
+      if (DEV_MODE) {
+        // Mode test : une arme de chaque type
+        for (const weapon of weapons) {
+          dbAddItem(runId, {
+            itemType:     "weapon",
+            itemCode:     weapon.code,
+            tier:         1,
+            material:     0,
+            affinities:   { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+            equipped:     0,
+            equippedSlot: null
+          });
+        }
+      } else {
+        // Mode normal : épée courte en bois uniquement
         dbAddItem(runId, {
           itemType:     "weapon",
-          itemCode:     weapon.code,
+          itemCode:     "SH",  // Epée courte
           tier:         1,
-          material:     0,
+          material:     0,     // Bois
           affinities:   { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
           equipped:     0,
           equippedSlot: null
@@ -98,7 +128,7 @@ io.on("connection", (socket) => {
       session.runId    = runId;
       session.etage    = 1;
 
-      console.log(`[game:start] playerId:${playerId} runId:${runId}`);
+      console.log(`[game:start] playerId:${playerId} runId:${runId} DEV_MODE:${DEV_MODE}`);
     } catch (err) {
       console.error("[game:start] Erreur DB :", err.message);
     }
@@ -124,15 +154,11 @@ io.on("connection", (socket) => {
     const session = getSession(socket.id);
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
     try {
-      // Vider le slot cible
       dbUnequipSlot(session.runId, data.slot);
-
-      // Si arme 2 mains — vider aussi la main gauche
       const weaponDef = weapons.find(w => w.code === data.itemCode);
       if (weaponDef?.hd === 2) {
         dbUnequipSlot(session.runId, "leftHand");
       }
-
       dbEquipItem(data.itemId, data.slot);
       callback({ ok: true });
     } catch (err) {
@@ -141,6 +167,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("inventory:unequip", (data, callback) => {
+    if (!data.itemId) {
+      console.error("[inventory:unequip] itemId manquant :", data);
+      return callback({ ok: false, error: "itemId manquant" });
+    }
     const session = getSession(socket.id);
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
     try {
@@ -152,6 +182,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("inventory:drop", (data, callback) => {
+    if (!data.itemId) {
+      console.error("[inventory:drop] itemId manquant :", data);
+      return callback({ ok: false, error: "itemId manquant" });
+    }
     const session = getSession(socket.id);
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
     try {
@@ -162,8 +196,30 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("player:action", (action, callback) => {
+    const session = getSession(socket.id);
+    if (!session) return callback({ ok: false, error: "Session introuvable" });
+
+    const result = handlePlayerAction(session, action);
+    if (!result.ok) return callback({ ok: false, error: result.error });
+
+    // Case spéciale détectée — retourner confirmation sans déplacer
+    if (result.confirm) {
+      return callback({ ok: true, confirm: result.confirm });
+    }
+
+    const state = session.getPublicState();
+
+    try {
+      if (session.runId) dbSaveFloor(session.runId, session.etage ?? 1, state.dungeon);
+    } catch (err) {
+      console.error("[player:action] Erreur DB :", err.message);
+    }
+
+    callback({ ok: true, state, specialType: result.specialType ?? null });
+  });
+
   socket.on("training:attempt", (data, callback) => {
-    // Validation des données reçues
     if (!data.stat) {
       console.error("[training:attempt] stat manquante");
       return callback({ ok: false, error: "stat manquante" });
@@ -173,60 +229,35 @@ io.on("connection", (socket) => {
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
 
     try {
-      const character    = dbGetCharacter(session.runId);
+      const character     = dbGetCharacter(session.runId);
       const augmentations = JSON.parse(character.augmentations ?? "{}");
-      const nbAug        = augmentations[data.stat] ?? 0;
+      const nbAug         = augmentations[data.stat] ?? 0;
 
-      // Formule GD : chanceEntrainement = (volonté * 5) / (1 + nbAugmentations de cette stat)
-      const chance = Math.min((character.volonte * 5) / (1 + nbAug), 95);
-      const roll     = Math.random() * 100;
-      const success  = roll <= chance;
+      // Formule GD : chance max 95%
+      const chance  = Math.min((character.volonte * 5) / (1 + nbAug), 95);
+      const roll = rollDie(1, 100);
+      const success = roll <= chance;
 
       if (success) {
         augmentations[data.stat] = nbAug + 1;
         dbIncrementStat(session.runId, data.stat, augmentations);
 
-        // Mettre à jour le player en session
-        session.player.stats[data.stat === "volonte" ? "volonté" : data.stat]++;
+        // Mettre à jour les stats en session
+        const statKey = data.stat === "volonte" ? "volonté" : data.stat;
+        session.player.stats[statKey] = (session.player.stats[statKey] ?? 0) + 1;
+        session.augmentations = augmentations;
       }
 
-      callback({ ok: true, success, chance: Math.floor(chance), roll: Math.floor(roll) });
+      callback({
+        ok:      true,
+        success,
+        chance:  Math.floor(chance),
+        roll:    Math.floor(roll)
+      });
     } catch (err) {
       console.error("[training:attempt] Erreur :", err.message);
       callback({ ok: false, error: err.message });
     }
-  });
-
-  socket.on("player:action", (action, callback) => {
-    const session = getSession(socket.id);
-    if (!session) return callback({ ok: false, error: "Session introuvable" });
-
-    // handlePlayerAction retourne soit :
-    // { ok: false, error }           → erreur (mur, hors limites, etc.)
-    // { ok: true, confirm: {...} }   → case spéciale détectée, pas de déplacement
-    // { ok: true }                   → déplacement normal effectué
-    const result = handlePlayerAction(session, action);
-    if (!result.ok) return callback({ ok: false, error: result.error });
-
-    // Cas case spéciale : on retourne la demande de confirmation au client
-    // sans sauvegarder en BDD (le joueur n'a pas bougé)
-    if (result.confirm) {
-      return callback({ ok: true, confirm: result.confirm });
-    }
-
-    // Déplacement normal ou move:confirm : on récupère l'état mis à jour
-    const state = session.getPublicState();
-
-    // Sauvegarde de l'étage en BDD après chaque déplacement effectif
-    try {
-      if (session.runId) dbSaveFloor(session.runId, session.etage ?? 1, state.dungeon);
-    } catch (err) {
-      console.error("[player:action] Erreur DB :", err.message);
-    }
-
-    // Pour move:confirm, on retourne aussi le type de case
-    // pour que le client sache quelle action spéciale lancer (entraînement, etc.)
-    callback({ ok: true, state, specialType: result.specialType ?? null });
   });
 
   socket.on("disconnect", () => {

@@ -126,7 +126,9 @@ function launchTraining(state) {
     selectedStat:      null,
     animationStart:    null,
     animationDuration: null,
-    success:           null
+    success:           null,
+    devMode:           state.devMode,
+    trainingUsed:      !state.devMode && (state.dungeon.training?.used ?? false)
   };
   state.screen = SCREENS.TRAINING;
 }
@@ -148,9 +150,13 @@ function handleTrainingInput(state, e) {
       break;
 
     case "result":
-      if (e.key === "Escape") {
-        state.screen   = SCREENS.DUNGEON;
-        state.training = null;
+      if (e.key === "Enter") {
+        // Retour à la sélection, pas au donjon
+        state.training.phase         = "select";
+        state.training.selectedIndex = 0;
+        state.training.success       = null;
+        state.training.chance        = null;
+        state.training.roll          = null;
       }
       break;
 
@@ -190,11 +196,12 @@ function handleTrainingSelectInput(state, e) {
   }
 
   if (e.key === "Enter") {
+      if (state.training.trainingUsed && !state.devMode) return;
     const stat = TRAINABLE_STATS[training.selectedIndex];
     if (!stat || isDisabled(stat)) return;
 
     const nbAug            = augmentations[stat.sqlKey] ?? 0;
-    const duration         = 5 * (1 + nbAug); // secondes
+    const duration = state.devMode ? 0 : 5 * (1 + nbAug); // secondes
 
     training.selectedStat      = stat.sqlKey;
     training.animationStart    = Date.now();
@@ -208,6 +215,7 @@ function handleTrainingSelectInput(state, e) {
           console.error("Erreur training:attempt :", response.error);
           state.training.phase = "result";
           state.training.success = false;
+          state.training.trainingUsed = true;
           return;
         }
 
@@ -416,9 +424,10 @@ function selectCandidate(state, candidate) {
       console.error(`Erreur démarrage : ${response.error}`);
       return;
     }
-    state.dungeon = response.state.dungeon;
-    state.player  = response.state.player;
-    state.config  = response.state.config;
-    state.screen  = SCREENS.CAMP;
+    state.dungeon  = response.state.dungeon;
+    state.player   = response.state.player;
+    state.config   = response.state.config;
+    state.devMode  = response.state.devMode;
+    state.screen   = SCREENS.CAMP;
   });
 }

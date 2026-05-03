@@ -1,6 +1,6 @@
 /*
   CHARACTER CARD
-  Affiche la carte d'un personnage (nom, avatar, stats).
+  Affiche la carte d'un personnage (nom, avatar, stats, niveau de donjon).
   Les labels de stats restent en français (affichage jeu).
 */
 
@@ -8,6 +8,8 @@ import { loadAvatar } from "../../core/assets.js";
 import { THEME }      from "../../core/theme.js";
 
 export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelected = false) {
+  if (!player) throw new Error("drawPlayerCard: player manquant");
+
   ctx.textBaseline = "top";
 
   const padding       = 20;
@@ -18,7 +20,8 @@ export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelect
   const contentX = frameX + padding;
   let   currentY = frameY + padding;
 
-  // --- CADRE ---
+  // ─── Cadre ────────────────────────────────────────────────────────────────
+
   if (isSelected) {
     ctx.fillStyle   = "#333";
     ctx.fillRect(frameX, frameY, blockWidth, 400);
@@ -31,14 +34,16 @@ export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelect
     ctx.strokeRect(frameX, frameY, blockWidth, 400);
   }
 
-  // --- NOM ---
+  // ─── Nom ──────────────────────────────────────────────────────────────────
+
   ctx.fillStyle = THEME.text.primary;
   ctx.font      = THEME.font.heading;
   ctx.textAlign = "left";
   ctx.fillText(player.name, contentX, currentY);
   currentY += lineHeight;
 
-  // --- AVATAR ---
+  // ─── Avatar ───────────────────────────────────────────────────────────────
+
   if (!player.avatarImage) {
     loadAvatar(player.avatarPath).then(img => { player.avatarImage = img; });
   }
@@ -54,7 +59,8 @@ export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelect
 
   currentY += avatarSize + avatarSpacing;
 
-  // --- STATS ---
+  // ─── Stats ────────────────────────────────────────────────────────────────
+
   const stats = player.stats;
   const statsList = [
     ["FORCE",        stats.force],
@@ -79,6 +85,29 @@ export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelect
 
     currentY += lineHeight;
   }
+
+  // ─── Séparateur ───────────────────────────────────────────────────────────
+
+  currentY += 8;
+  ctx.strokeStyle = THEME.ui.borderLight;
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(frameX + padding, currentY);
+  ctx.lineTo(frameX + blockWidth - padding, currentY);
+  ctx.stroke();
+  currentY += 12;
+
+  // ─── Niveau de donjon ─────────────────────────────────────────────────────
+
+  ctx.font      = THEME.components.statLabel.font;
+  ctx.fillStyle = THEME.components.statLabel.color;
+  ctx.textAlign = "left";
+  ctx.fillText("DONJON", contentX, currentY);
+
+  ctx.font      = THEME.components.statValue.font;
+  ctx.fillStyle = THEME.components.statValue.color;
+  ctx.textAlign = "right";
+  ctx.fillText(`Niveau ${player.etage ?? 1}`, frameX + blockWidth - padding, currentY);
 
   ctx.textAlign = "left";
 }

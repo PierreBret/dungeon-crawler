@@ -12,12 +12,11 @@ const STATS_CONFIG = {
 };
 
 // ─── Dés ──────────────────────────────────────────────────────────────────────
-
-function rollDie(min, max) {
+export function rollDie(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function rollDice(count, faces) {
+export function rollDice(count, faces) {
   let total = 0;
   for (let i = 0; i < count; i++) total += rollDie(1, faces);
   return total;

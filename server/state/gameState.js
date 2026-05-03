@@ -14,12 +14,14 @@ const sessions = new Map();
 
 class GameSession {
   constructor(socketId, candidate) {
-    this.socketId  = socketId;
-    this.dungeon   = generateDungeon(); // { grid, creatures, forge, training, exit }
-    this.player    = createPlayer(candidate, this.dungeon.grid);
-    this.screen    = "dungeon";
-    this.turn      = 0;
-    this.combatLog = [];
+    this.socketId     = socketId;
+    this.dungeon      = generateDungeon();
+    this.player       = createPlayer(candidate, this.dungeon.grid);
+    this.screen       = "dungeon";
+    this.turn         = 0;
+    this.etage        = 1;
+    this.combatLog    = [];
+    this.augmentations = {}; // { stat: nbAugmentations } — mis à jour après chaque entraînement
   }
 
   getPublicState() {
@@ -32,15 +34,16 @@ class GameSession {
         exit:      this.dungeon.exit
       },
       player: {
-        name:       this.player.name,
-        avatarPath: this.player.avatarPath,
-        stats:      this.player.stats,
-        position:   this.player.position
+        name:          this.player.name,
+        avatarPath:    this.player.avatarPath,
+        stats:         this.player.stats,
+        position:      this.player.position,
+        etage:         this.etage,          // niveau de donjon actuel (1-100)
+        augmentations: this.augmentations   // nb augmentations par stat
       },
       screen:    this.screen,
       turn:      this.turn,
       combatLog: this.combatLog.slice(-20),
-      // Dimensions jouables (sans les bordures de génération)
       config: {
         rows: this.dungeon.grid.length - 2,
         cols: this.dungeon.grid[0].length - 2
