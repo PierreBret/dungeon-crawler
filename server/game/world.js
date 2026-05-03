@@ -11,6 +11,10 @@
     training,   // position du terrain d'entraînement
     exit        // position du passage vers l'étage suivant
   }
+
+  Déplacement :
+  - move       : tente le déplacement, retourne confirm si case spéciale
+  - move:confirm : confirme le déplacement après dialog côté client
 */
 
 import { DUNGEON_CONFIG } from "../config.js";
@@ -151,14 +155,12 @@ function generateGrid(rows, cols, extraPaths) {
 function placeElements(grid) {
   const tiles = shuffle(getWalkableTiles(grid));
 
-  // Minimum requis : 4 créatures + forge + entraînement + passage = 7 cases
   if (tiles.length < 7) {
     console.warn("Donjon trop petit pour placer tous les éléments");
   }
 
   let idx = 0;
 
-  // 4 créatures (type et tier assignés selon l'étage dans gameState)
   const creatures = [];
   for (let i = 0; i < 4; i++) {
     creatures.push({ x: tiles[idx].x, y: tiles[idx].y, defeated: false });
@@ -181,9 +183,95 @@ export function generateDungeon() {
   return { grid, creatures, forge, training, exit };
 }
 
+// ─── Détection case spéciale ──────────────────────────────────────────────────
+
+/**
+ * Retourne les infos de confirmation si la case (x, y) est spéciale.
+ * Retourne null si la case est ordinaire.
+ */
+function getSpecialTile(dungeon, x, y) {
+  const { creatures, forge, training, exit } = dungeon;
+
+  // Créature vivante
+  const creature = creatures?.find(c => !c.defeated && c.x === x && c.y === y);
+  if (creature) {
+    return {
+      type:    "creature",
+      label:   "Êtes-vous sûr de vouloir affronter cette créature ?",
+      data:    { creature }
+    };
+  }
+
+  // Forge
+  if (forge && forge.x === x && forge.y === y) {
+    return {
+      type:  "forge",
+      label: "Êtes-vous sûr de vouloir utiliser la forge ?",
+      data:  {}
+    };
+  }
+
+  // Terrain d'entraînement
+  if (training && training.x === x && training.y === y) {
+    return {
+      type:  "training",
+      label: "Êtes-vous sûr de vouloir aller au terrain d'entraînement ?",
+      data:  { used: training.used }
+    };
+  }
+
+  // Sortie
+  if (exit && exit.x === x && exit.y === y) {
+    return {
+      type:  "exit",
+      label: "Êtes-vous sûr de vouloir passer à l'étage suivant ?",
+      data:  {}
+    };
+  }
+
+  return null;
+}
+
 // ─── Déplacement (validation serveur) ────────────────────────────────────────
 
 function movePlayer(session, dx, dy) {
+  if (!session?.player) throw new Error("movePlayer: session.player manquant");
+  if (!session?.dungeon) throw new Error("movePlayer: session.dungeon manquant");
+
+  const { player, dungeon } = session;
+  const newX = player.position.x + dx;
+  const newY = player.position.y + dy;
+
+  if (newY < 0 || newY >= dungeon.grid.length)    return { ok: false, error: "Hors limites" };
+  if (newX < 0 || newX >= dungeon.grid[0].length) return { ok: false, error: "Hors limites" };
+  if (dungeon.grid[newY][newX] !== 0)             return { ok: false, error: "Mur" };
+
+  // Vérifier si la case de destination est spéciale
+  const special = getSpecialTile(dungeon, newX, newY);
+  if (special) {
+    // Ne pas déplacer — demander confirmation au client
+    return {
+      ok:      true,
+      confirm: {
+        type:      special.type,
+        label:     special.label,
+        data:      special.data,
+        direction: { dx, dy }  // mémorisé pour move:confirm
+      }
+    };
+  }
+
+  // Case ordinaire — déplacer directement
+  player.position.x = newX;
+  player.position.y = newY;
+  session.turn++;
+
+  return { ok: true };
+}
+
+function confirmMove(session, dx, dy) {
+  if (!session?.player) throw new Error("confirmMove: session.player manquant");
+
   const { player, dungeon } = session;
   const newX = player.position.x + dx;
   const newY = player.position.y + dy;
@@ -196,7 +284,9 @@ function movePlayer(session, dx, dy) {
   player.position.y = newY;
   session.turn++;
 
-  return { ok: true };
+  // Retourner le type de case pour que le client lance la bonne action
+  const special = getSpecialTile(dungeon, newX, newY);
+  return { ok: true, specialType: special?.type ?? null };
 }
 
 // ─── Dispatcher des actions joueur ───────────────────────────────────────────
@@ -205,6 +295,7 @@ export function handlePlayerAction(session, action) {
   switch (action.type) {
 
     case "move": {
+      if (!action.direction) return { ok: false, error: "Direction manquante" };
       const directions = {
         up:    { dx:  0, dy: -1 },
         down:  { dx:  0, dy:  1 },
@@ -214,6 +305,12 @@ export function handlePlayerAction(session, action) {
       const dir = directions[action.direction];
       if (!dir) return { ok: false, error: "Direction invalide" };
       return movePlayer(session, dir.dx, dir.dy);
+    }
+
+    case "move:confirm": {
+      if (!action.dx && action.dx !== 0) return { ok: false, error: "dx manquant" };
+      if (!action.dy && action.dy !== 0) return { ok: false, error: "dy manquant" };
+      return confirmMove(session, action.dx, action.dy);
     }
 
     case "attack":

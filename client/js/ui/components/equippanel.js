@@ -438,7 +438,7 @@ function getItemLabel(item) {
     const weaponDef  = gameData.weapons.find(w => w.code === item.itemCode);
     const modelIndex = (item.tier ?? 1) - 1;
     const weaponName = weaponDef?.models?.[modelIndex] ?? item.itemCode;
-    const matName    = MATERIALS[item.material] ?? "?";
+    const matName = MATERIALS[item.material]?.name ?? "?";
     return `${weaponName} en ${matName}`;
   }
   if (item.itemType === "shield") return `Bouclier T${item.tier}`;

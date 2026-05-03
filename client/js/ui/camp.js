@@ -14,6 +14,7 @@ import {
   getAffinityLabel,
   AFFINITY_KEYS
 } from "../core/damagecalc.js";
+import { computeEquipMessages } from "../core/equipchecks.js";
 
 export function drawCamp(ctx, player, campState = {}) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -23,7 +24,7 @@ export function drawCamp(ctx, player, campState = {}) {
 
   drawLeftPanel(ctx, player, layout);
   drawCenterPanel(ctx, campState, layout, player);
-  drawRightPanel(ctx, layout);
+  drawRightPanel(ctx, layout, campState, player);
 }
 
 // ─── Panneau gauche — carte joueur ───────────────────────────────────────────
@@ -89,10 +90,10 @@ function drawCenterPanel(ctx, campState, layout, player) {
   }
 }
 
-// ─── Panneau droit — réservé ──────────────────────────────────────────────────
+// ─── Panneau droit — messages équipement ─────────────────────────────────────
 
-function drawRightPanel(ctx, layout) {
-  const { rightX, rightWidth, height } = layout;
+function drawRightPanel(ctx, layout, campState, player) {
+  const { rightX, rightWidth, height, padding } = layout;
 
   ctx.fillStyle = "#161616";
   ctx.fillRect(rightX, 0, rightWidth, height);
@@ -103,6 +104,72 @@ function drawRightPanel(ctx, layout) {
   ctx.moveTo(rightX, 0);
   ctx.lineTo(rightX, height);
   ctx.stroke();
+
+  // Affichage uniquement en mode équip avec joueur et inventaire disponibles
+  if (campState.mode !== "equip" || !player?.stats || !campState.inventory) return;
+
+  const inventory    = campState.inventory;
+  const rightItem    = inventory.find(i => i.equippedSlot === "rightHand");
+  const leftItem     = inventory.find(i => i.equippedSlot === "leftHand");
+
+  const rightDef     = rightItem ? gameData.weapons.find(w => w.code === rightItem.itemCode) : null;
+  const leftDef      = leftItem  ? gameData.weapons.find(w => w.code === leftItem.itemCode)  : null;
+  const leftIsShield = leftDef ? (leftDef.damFirst === 0 && leftDef.damLast === 0) : false;
+
+  if (!rightDef && !leftDef) return;
+
+  const messages = computeEquipMessages(
+    player.stats, player.name, rightDef, leftDef, leftIsShield
+  );
+
+  // ─── Titre ────────────────────────────────────────────────────────────────
+
+  const x = rightX + padding;
+  let   y = padding;
+
+  ctx.fillStyle = "#888";
+  ctx.font      = "13px monospace";
+  ctx.fillText("Aptitude au combat", x, y);
+  y += 8;
+
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y + 14);
+  ctx.lineTo(rightX + rightWidth - padding, y + 14);
+  ctx.stroke();
+  y += 28;
+
+  // ─── Messages ─────────────────────────────────────────────────────────────
+
+  const lineH  = 18;
+  const maxW   = rightWidth - padding * 2;
+
+  ctx.font = "12px monospace";
+
+  for (const msg of messages) {
+    ctx.fillStyle = "white";
+
+    // Retour à la ligne automatique
+    const words = msg.split(" ");
+    let   line  = "";
+
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxW && line) {
+        ctx.fillText(line, x, y);
+        y    += lineH;
+        line  = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) {
+      ctx.fillText(line, x, y);
+      y += lineH;
+    }
+    y += 6; // espace entre messages
+  }
 }
 
 // ─── Menu principal ───────────────────────────────────────────────────────────

@@ -49,10 +49,18 @@ export function updateRunEtage(runId, etage) {
 export function createCharacter(runId, stats, hp, endurance) {
   return db.prepare(`
     INSERT INTO characters
-      (runId, force, constitution, taille, intelligence, volonte, vitesse, adresse, hp, endurance)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (runId,
+       force, constitution, taille, intelligence, volonte, vitesse, adresse,
+       force_base, constitution_base, taille_base, intelligence_base,
+       volonte_base, vitesse_base, adresse_base,
+       hp, endurance)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     runId,
+    // Stats actuelles
+    stats.force, stats.constitution, stats.taille,
+    stats.intelligence, stats.volonté, stats.vitesse, stats.adresse,
+    // Stats de base (identiques à la création)
     stats.force, stats.constitution, stats.taille,
     stats.intelligence, stats.volonté, stats.vitesse, stats.adresse,
     hp, endurance
@@ -71,6 +79,30 @@ export function updateCharacterHpEndurance(runId, hp, endurance) {
 export function updateAugmentations(runId, augmentations) {
   db.prepare("UPDATE characters SET augmentations = ? WHERE runId = ?")
     .run(JSON.stringify(augmentations), runId);
+}
+
+/**
+ * Augmente une stat d'un point et met à jour augmentations.
+ * Les deux opérations sont atomiques (transaction).
+ *
+ * @param {number} runId
+ * @param {string} stat        — nom de la colonne SQL (ex: "force", "adresse")
+ * @param {object} augmentations — objet JSON augmentations mis à jour
+ */
+export function incrementStat(runId, stat, augmentations) {
+  // Colonnes autorisées — protection contre injection SQL
+  const allowed = ["force", "constitution", "intelligence", "volonte", "vitesse", "adresse"];
+  if (!allowed.includes(stat)) {
+    throw new Error(`incrementStat: stat non autorisée "${stat}"`);
+  }
+
+  const transaction = db.transaction(() => {
+    db.prepare(`UPDATE characters SET ${stat} = ${stat} + 1 WHERE runId = ?`).run(runId);
+    db.prepare(`UPDATE characters SET augmentations = ? WHERE runId = ?`)
+      .run(JSON.stringify(augmentations), runId);
+  });
+
+  transaction();
 }
 
 // ─── Inventory ────────────────────────────────────────────────────────────────

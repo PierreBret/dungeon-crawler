@@ -2,6 +2,10 @@
   SERVER/DB/SCHEMA.JS
   Création des tables SQLite au démarrage.
   Les tables ne sont créées que si elles n'existent pas déjà.
+
+  Pour les colonnes ajoutées après la création initiale :
+  ALTER TABLE est utilisé avec try/catch car SQLite ne supporte pas
+  "ADD COLUMN IF NOT EXISTS". Si la colonne existe déjà, l'erreur est ignorée.
 */
 
 import db from "./database.js";
@@ -32,18 +36,25 @@ export function initSchema() {
   // Personnage du run (stats + augmentations d'entraînement)
   db.exec(`
     CREATE TABLE IF NOT EXISTS characters (
-      id           INTEGER PRIMARY KEY AUTOINCREMENT,
-      runId        INTEGER NOT NULL REFERENCES runs(id),
-      force        INTEGER NOT NULL,
-      constitution INTEGER NOT NULL,
-      taille       INTEGER NOT NULL,
-      intelligence INTEGER NOT NULL,
-      volonte      INTEGER NOT NULL,
-      vitesse      INTEGER NOT NULL,
-      adresse      INTEGER NOT NULL,
-      hp           INTEGER NOT NULL,
-      endurance    INTEGER NOT NULL,
-      augmentations TEXT   NOT NULL DEFAULT '{}'  -- JSON {stat: nbAugmentations}
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      runId           INTEGER NOT NULL REFERENCES runs(id),
+      force           INTEGER NOT NULL,
+      constitution    INTEGER NOT NULL,
+      taille          INTEGER NOT NULL,
+      intelligence    INTEGER NOT NULL,
+      volonte         INTEGER NOT NULL,
+      vitesse         INTEGER NOT NULL,
+      adresse         INTEGER NOT NULL,
+      hp              INTEGER NOT NULL,
+      endurance       INTEGER NOT NULL,
+      augmentations   TEXT    NOT NULL DEFAULT '{}',  -- JSON {stat: nbAugmentations}
+      force_base      INTEGER,  -- stat originale à la création du personnage
+      constitution_base INTEGER,
+      taille_base     INTEGER,
+      intelligence_base INTEGER,
+      volonte_base    INTEGER,
+      vitesse_base    INTEGER,
+      adresse_base    INTEGER
     )
   `);
 

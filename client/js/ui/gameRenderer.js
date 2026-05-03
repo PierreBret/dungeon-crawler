@@ -7,9 +7,10 @@ import { SCREENS }               from "../core/constants.js";
 import { drawDungeon }           from "./render.js";
 import { drawCamp }              from "./camp.js";
 import { drawCharacterCreation } from "./characterCreation.js";
+import { drawTraining }          from "./training.js";
 
 export function renderGame(state) {
-  const { ctx, dungeon, player, TILE_SIZE, screen, characterCreation } = state;
+  const { ctx, dungeon, player, screen, characterCreation } = state;
 
   switch (screen) {
     case SCREENS.CHARACTER_CREATION:
@@ -22,6 +23,10 @@ export function renderGame(state) {
 
     case SCREENS.CAMP:
       drawCamp(ctx, player, state.camp);
+      break;
+
+    case SCREENS.TRAINING:
+      drawTraining(ctx, state.training, player);
       break;
 
     default:

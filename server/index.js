@@ -24,7 +24,9 @@ import {
   unequipSlot     as dbUnequipSlot,
   removeItem      as dbRemoveItem,
   saveFloor       as dbSaveFloor,
-  updateRunStatut as dbUpdateRunStatut
+  updateRunStatut as dbUpdateRunStatut,
+  getCharacter    as dbGetCharacter,
+  incrementStat   as dbIncrementStat
 } from "./db/queries.js";
 
 initSchema();
@@ -160,22 +162,71 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("training:attempt", (data, callback) => {
+    // Validation des données reçues
+    if (!data.stat) {
+      console.error("[training:attempt] stat manquante");
+      return callback({ ok: false, error: "stat manquante" });
+    }
+
+    const session = getSession(socket.id);
+    if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
+
+    try {
+      const character    = dbGetCharacter(session.runId);
+      const augmentations = JSON.parse(character.augmentations ?? "{}");
+      const nbAug        = augmentations[data.stat] ?? 0;
+
+      // Formule GD : chanceEntrainement = (volonté * 5) / (1 + nbAugmentations de cette stat)
+      const chance = Math.min((character.volonte * 5) / (1 + nbAug), 95);
+      const roll     = Math.random() * 100;
+      const success  = roll <= chance;
+
+      if (success) {
+        augmentations[data.stat] = nbAug + 1;
+        dbIncrementStat(session.runId, data.stat, augmentations);
+
+        // Mettre à jour le player en session
+        session.player.stats[data.stat === "volonte" ? "volonté" : data.stat]++;
+      }
+
+      callback({ ok: true, success, chance: Math.floor(chance), roll: Math.floor(roll) });
+    } catch (err) {
+      console.error("[training:attempt] Erreur :", err.message);
+      callback({ ok: false, error: err.message });
+    }
+  });
+
   socket.on("player:action", (action, callback) => {
     const session = getSession(socket.id);
     if (!session) return callback({ ok: false, error: "Session introuvable" });
 
+    // handlePlayerAction retourne soit :
+    // { ok: false, error }           → erreur (mur, hors limites, etc.)
+    // { ok: true, confirm: {...} }   → case spéciale détectée, pas de déplacement
+    // { ok: true }                   → déplacement normal effectué
     const result = handlePlayerAction(session, action);
     if (!result.ok) return callback({ ok: false, error: result.error });
 
+    // Cas case spéciale : on retourne la demande de confirmation au client
+    // sans sauvegarder en BDD (le joueur n'a pas bougé)
+    if (result.confirm) {
+      return callback({ ok: true, confirm: result.confirm });
+    }
+
+    // Déplacement normal ou move:confirm : on récupère l'état mis à jour
     const state = session.getPublicState();
 
+    // Sauvegarde de l'étage en BDD après chaque déplacement effectif
     try {
       if (session.runId) dbSaveFloor(session.runId, session.etage ?? 1, state.dungeon);
     } catch (err) {
       console.error("[player:action] Erreur DB :", err.message);
     }
 
-    callback({ ok: true, state });
+    // Pour move:confirm, on retourne aussi le type de case
+    // pour que le client sache quelle action spéciale lancer (entraînement, etc.)
+    callback({ ok: true, state, specialType: result.specialType ?? null });
   });
 
   socket.on("disconnect", () => {

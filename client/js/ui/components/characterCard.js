@@ -5,13 +5,14 @@
 */
 
 import { loadAvatar } from "../../core/assets.js";
+import { THEME }      from "../../core/theme.js";
 
 export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelected = false) {
   ctx.textBaseline = "top";
 
-  const padding      = 20;
-  const lineHeight   = 26;
-  const avatarSize   = 150;
+  const padding       = 20;
+  const lineHeight    = 26;
+  const avatarSize    = 150;
   const avatarSpacing = 15;
 
   const contentX = frameX + padding;
@@ -21,18 +22,18 @@ export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelect
   if (isSelected) {
     ctx.fillStyle   = "#333";
     ctx.fillRect(frameX, frameY, blockWidth, 400);
-    ctx.strokeStyle = "yellow";
+    ctx.strokeStyle = THEME.text.accent;
     ctx.lineWidth   = 3;
     ctx.strokeRect(frameX, frameY, blockWidth, 400);
   } else {
-    ctx.strokeStyle = "#666";
+    ctx.strokeStyle = THEME.ui.border;
     ctx.lineWidth   = 1;
     ctx.strokeRect(frameX, frameY, blockWidth, 400);
   }
 
   // --- NOM ---
-  ctx.fillStyle = "white";
-  ctx.font      = "bold 22px Arial";
+  ctx.fillStyle = THEME.text.primary;
+  ctx.font      = THEME.font.heading;
   ctx.textAlign = "left";
   ctx.fillText(player.name, contentX, currentY);
   currentY += lineHeight;
@@ -47,15 +48,13 @@ export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelect
   if (player.avatarImage) {
     ctx.drawImage(player.avatarImage, avatarX, currentY, avatarSize, avatarSize);
   } else {
-    ctx.fillStyle = "#222";
+    ctx.fillStyle = THEME.ui.bgItem;
     ctx.fillRect(avatarX, currentY, avatarSize, avatarSize);
   }
 
   currentY += avatarSize + avatarSpacing;
 
-  // --- STATS (labels en français pour l'affichage) ---
-  ctx.font = "20px Arial";
-
+  // --- STATS ---
   const stats = player.stats;
   const statsList = [
     ["FORCE",        stats.force],
@@ -68,10 +67,16 @@ export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelect
   ];
 
   for (const [label, value] of statsList) {
+    ctx.font      = THEME.components.statLabel.font;
+    ctx.fillStyle = THEME.components.statLabel.color;
     ctx.textAlign = "left";
     ctx.fillText(label, contentX, currentY);
+
+    ctx.font      = THEME.components.statValue.font;
+    ctx.fillStyle = THEME.components.statValue.color;
     ctx.textAlign = "right";
     ctx.fillText(String(value), frameX + blockWidth - padding, currentY);
+
     currentY += lineHeight;
   }
 

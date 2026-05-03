@@ -1,7 +1,8 @@
 export const SCREENS = {
   CHARACTER_CREATION: "characterCreation",
-  CAMP: "camp",
-  DUNGEON: "dungeon"
+  CAMP:               "camp",
+  DUNGEON:            "dungeon",
+  TRAINING:           "training"
 };
 
 export const CAMP_OPTIONS = [
@@ -15,20 +16,11 @@ export const CAMP_OPTIONS = [
 // ─── Layout — source de vérité unique ────────────────────────────────────────
 
 export const LAYOUT = {
-  leftRatio:  0.20,  // 20% — colonne gauche  (characterCard + progression)
-  rightRatio: 0.30,  // 30% — colonne droite  (infos contextuelles)
-  padding:      20,  // padding interne des panneaux
+  leftRatio:  0.20,
+  rightRatio: 0.30,
+  padding:    20,
 };
 
-/**
- * Retourne les dimensions calculées à partir du canvas.
- * À appeler depuis chaque drawXxx() qui en a besoin.
- * Les colonnes sont proportionnelles — s'adaptent à toute résolution.
- *
- * @param {number} canvasWidth
- * @param {number} canvasHeight
- * @returns {object}
- */
 export function getLayout(canvasWidth, canvasHeight) {
   const { leftRatio, rightRatio, padding } = LAYOUT;
   const leftWidth  = Math.floor(canvasWidth * leftRatio);

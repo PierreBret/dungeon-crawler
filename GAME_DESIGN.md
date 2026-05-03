@@ -44,7 +44,7 @@ Jeu tactique de type die-and-retry. Le combat est la conséquence des préparati
 
 ## Conventions de code
 
-Tous les noms des fichiers js sont en minuscule
+Tous les noms des fichiers js sont en minuscule.
 
 ### Fonctions passées en paramètre
 Toujours nommer les fonctions passées en argument — jamais de fonctions anonymes.
@@ -62,6 +62,21 @@ handleEquipKeys(e, state.camp, onEquip);
 Les fonctions locales à une autre fonction sont autorisées si elles ont un nom
 et accèdent au scope parent (closure) — c'est le cas typique des callbacks socket.
 
+### Thème visuel
+Tout fichier UI importe `THEME` depuis `core/theme.js` et utilise ses valeurs
+pour les couleurs et polices. Aucune couleur ou police hardcodée dans le code UI.
+Règle appliquée progressivement : chaque modification d'un fichier UI inclut
+la migration vers THEME pour ce fichier.
+
+```javascript
+import { THEME } from "../core/theme.js";
+ctx.fillStyle = THEME.text.primary;
+ctx.font      = THEME.font.body;
+// Stats (uniforme dans toute l'application) :
+ctx.font      = THEME.components.statLabel.font;
+ctx.fillStyle = THEME.components.statLabel.color;
+```
+
 ---
 
 ## Règles de validation du code
@@ -70,7 +85,7 @@ et accèdent au scope parent (closure) — c'est le cas typique des callbacks so
 Toujours valider les paramètres en entrée avec `throw new Error()` :
 ```javascript
 export function maFonction(param1, callback) {
-  if (!param1)                    throw new Error("maFonction: param1 manquant");
+  if (!param1)                        throw new Error("maFonction: param1 manquant");
   if (typeof callback !== "function") throw new Error("maFonction: callback doit être une fonction");
 }
 ```
@@ -97,7 +112,10 @@ if (!def) console.error(`getWeaponDef: aucune def trouvée pour itemCode="${item
 Valider au point d'entrée de chaque fonction publique et au point de réception
 de chaque route serveur. Transformer les bugs silencieux en erreurs explicites.
 
+---
+
 ## Structure du donjon
+
 - 100 étages
 - 4 créatures par étage (positions aléatoires à la génération)
 - 1 gardien tous les 10 étages (tier supérieur)
@@ -210,11 +228,22 @@ endurance = constitution + volonté         // à 0 = épuisement
 
 ### Entraînement
 
-Chance d'augmenter une stat de 1 (sauf taille) — usage unique par étage :
+Chance d'augmenter une stat de 1 (sauf taille) — usage unique par étage (désactivé en dev) :
 ```javascript
-chanceEntrainement = (volonté * 5) / (1 + nombreAugmentationsDéjàEffectuées)
-// résultat en pourcentage
+chanceEntrainement = Math.min((volonté * 5) / (1 + nombreAugmentations), 95)
+// résultat en pourcentage — nombreAugmentations = nb fois cette stat a été augmentée
 ```
+
+Durée de l'animation d'entraînement :
+```javascript
+duréeAnimation = 5 * (1 + nombreAugmentationsDéjàEffectuées) // secondes
+```
+
+Stats entraînables : force, constitution, intelligence, volonté, vitesse, adresse.
+Taille : non entraînable. Stats à 21 : grisées.
+
+Stats stockées en BDD : valeur actuelle + valeur de base à la création (`force_base`, etc.)
+pour permettre de calculer le nombre d'augmentations par stat.
 
 ---
 
@@ -293,7 +322,6 @@ if (riposteQuality > 0) {
 initQuality = initScore - d100  // jet de l'attaquant
 
 if (riposteQuality > initQuality) {
-  // Le défenseur prend l'initiative → riposte avec bonus
   lancerAttaque(défenseur, attaquant, bonusQualité = +20)
 } else {
   // L'attaquant conserve l'initiative → pas de riposte
@@ -301,8 +329,6 @@ if (riposteQuality > initQuality) {
 
 // Résolution de l'attaque de riposte
 attackQuality = attackScore - d100 + 20  // +20 bonus riposte
-// La défense adverse doit battre attackQuality+20 pour esquiver ou parer
-// Les dégâts sont identiques à une attaque normale
 ```
 
 **Principe :** une riposte est plus difficile à défendre, mais ne fait pas plus de dégâts.
@@ -329,15 +355,13 @@ dégâtsFinaux = Math.max(0, dégâtsBruts - réductionArmure)
 
 ```javascript
 // baseArme : interpolation linéaire entre damFirst (T1) et damLast (dernier tier)
+// nbTiers déduit du nombre de modèles dans weapons.json
 baseArme = damFirst + (damLast - damFirst) * (tier - 1) / (nbTiers - 1)
 
-// modMatériau : 1.0 (Bois) → 2.5 (Acier damascène) — voir table matériaux
+// modMatériau : 1.0 (Bois) → 2.0 (Acier damascène) — voir table matériaux
 
 // modAffinité : basé sur l'affinité de l'arme contre la famille de l'ennemi (-100 à +100)
 modAffinité = 1 + (affinité / 100)
-// affinité -100 → 0 (annule les dégâts)
-// affinité    0 → 1 (neutre)
-// affinité  100 → 2 (double les dégâts)
 
 // coefStats : influence modérée des stats du combattant (plage 0.8 → 1.2)
 coefStats = 1
@@ -346,9 +370,6 @@ coefStats = 1
   + (vitesse - 12)      * 0.02 * poidsVitesse
   + (taille - 12)       * 0.02 * poidsTaille
   + (intelligence - 12) * 0.02 * poidsIntelligence
-
-// modTypeDégats : selon type d'arme et contexte
-// Très fort=1.2  Fort=1.1  Faible=0.9  Très faible=0.8
 ```
 
 **Types de dégâts vs armure et défense :**
@@ -368,17 +389,12 @@ coefStats = 1
 écartPortée = Math.abs(EN - portéeOptimale)
 modPortée_Precision = 1 - écartPortée * 0.08
 modPortée_Degats    = 1 - écartPortée * 0.04
-// EN = engagement du combattant (1=loin, 10=corps à corps)
-// portéeOptimale définie par arme (ex: dague=9, lance longue=2)
 ```
 
 ### Endurance — coûts
 
 ```javascript
 poidsPorté    = poidsMainDroite + poidsMainGauche + poidsArmureTotal
-// poidsArmureTotal = somme des tiers des 4 pièces équipées
-// (poids = tier dans la table armures)
-
 coutAction    = coutBase * poidsPorté
 coutMinMinute = Math.floor(NA * 0.2 + EO * 0.1)  // anti-stalemate
 ```
@@ -386,6 +402,32 @@ coutMinMinute = Math.floor(NA * 0.2 + EO * 0.1)  // anti-stalemate
 **Seuils :**
 - Endurance < 25% → fatigueRatio appliqué à tous les jets
 - Endurance = 0 → épuisé, hors combat
+
+---
+
+## Contraintes de maniement des armes
+
+Vérifiées à l'équipement et affichées dans le panneau droit (mode équip).
+
+- `stat_joueur + 2 < stat_arme` → message critique
+- `stat_joueur < stat_arme` → message léger
+- Stats testées : force, taille, intelligence, adresse
+- Main gauche : adresse requise = `arme.ad + 5`
+- Ambidextrie (2 armes, pas bouclier) : seuil = `arme_droite.fo + arme_gauche.fo + 10`
+- Boucliers : test de force uniquement
+
+---
+
+## Navigation dans le donjon
+
+Toute case spéciale requiert une confirmation avant d'y entrer :
+- "Êtes-vous sûr de vouloir affronter cette créature ?"
+- "Êtes-vous sûr de vouloir aller au terrain d'entraînement ?"
+- "Êtes-vous sûr de vouloir utiliser la forge ?"
+- "Êtes-vous sûr de vouloir passer à l'étage suivant ?"
+
+En cas de refus, le joueur reste sur sa case adjacente.
+Navigation dialog : ←/→ pour Oui/Non, Entrée pour valider. Non par défaut.
 
 ---
 
@@ -414,21 +456,15 @@ coutMinMinute = Math.floor(NA * 0.2 + EO * 0.1)  // anti-stalemate
 | QS | Baton de combat | 19 | 71 | 6 | 2 | Blunt | 0.7 | 0.7 | 0.4 | 0.6 | 0.6 | 4 |
 | SC | Faux | 23 | 84 | 6 | 2 | Edged | 0.8 | 0.9 | 0.4 | 0.4 | 0.5 | 4 |
 
-### Exemple de progression — Masse (7 tiers)
-
-```
-Massue (T1) + Gourdain (T2)               = Casse-tête (T3)
-Gourdain (T2) + Casse-tête (T3)           = Masse d'arme (T4)
-Casse-tête (T3) + Masse d'arme (T4)       = Masse à ailettes (T5)
-Masse d'arme (T4) + Masse à ailettes (T5) = Morgenstern (T6)
-Morgenstern (T6) + Morgenstern (T6)       = Mjolnir (T7)
-```
+### nb tiers
+Le nombre de tiers est déduit du nombre de modèles dans `weapons.json`.
+Ajouter ou supprimer un modèle met automatiquement à jour le calcul des dégâts.
 
 ---
 
 ## Matériaux des armes
 
-8 matériaux, dimension indépendante du tier :
+8 matériaux, dimension indépendante du tier. Définis dans `client/js/core/gamedata.js`.
 
 ```
 Bois=0, Cuivre=1, Étain=2, Bronze=3, Fer=4, Fonte=5, Acier=6, Acier damascène=7
@@ -437,22 +473,16 @@ Bois=0, Cuivre=1, Étain=2, Bronze=3, Fer=4, Fonte=5, Acier=6, Acier damascène=
 ### Influence sur les dégâts (modMatériau)
 
 ```
-Bois            = 1.0
-Cuivre          = 1.21
-Étain           = 1.43
-Bronze          = 1.64
-Fer             = 1.86
-Fonte           = 2.07
-Acier           = 2.29
-Acier damascène = 2.5
+Bois            = 1.000
+Cuivre          = 1.250
+Étain           = 1.375
+Bronze          = 1.500
+Fer             = 1.625
+Fonte           = 1.750
+Acier           = 1.875
+Acier damascène = 2.000
 ```
 *Valeurs à ajuster pendant l'équilibrage.*
-
-### Drops
-
-- Bois et Cuivre disponibles dès l'étage 1
-- T1 et T2 (tier et matériau) disponibles dès le début
-- Matériaux supérieurs apparaissent progressivement avec les étages
 
 ---
 
@@ -483,45 +513,13 @@ Acier damascène = 2.5
 | 15 | Jazeraint Armor | Jazeraint Helm | Jazeraint Glove | Jazeraint Leggings |
 | 16 | Dread Armor | Dread Helm | Dread Glove | Dread Leggings |
 
-### Réduction des dégâts
-
-```javascript
-// v1 — pas de localisation
-réductionArmure = Math.floor(
-  (armure.corps.tier + armure.tête.tier + armure.bras.tier + armure.jambes.tier) / 4
-)
-dégâtsFinaux = Math.max(0, dégâtsBruts - réductionArmure)
-
-// v2 — localisation des dégâts
-// zoneTouchée = aléatoire (40% corps, 25% jambes, 25% bras, 10% tête)
-// réductionArmure = armure[zoneTouchée].tier
-```
-
-### Poids total d'armure
-
-```javascript
-poidsArmureTotal = armure.corps.tier + armure.tête.tier + armure.bras.tier + armure.jambes.tier
-// ex: Breastplate(8) + Sallet(8) + Vambrace(8) + Poleyn(9) = 33
-```
-
-### Armure lourde vs légère (pour modTypeDégâts)
-
-```javascript
-// basé sur le tier du corps uniquement
-armureLourde = armure.corps.tier > 8
-```
-
 ### Progression à la forge
 
 ```
 T(n) + T(n+1) = T(n+2)   ← règle générale jusqu'à T13
-T14  + T14    = T15       ← 1ère rupture : même tier
-T15  + T15    = T16       ← 2ème rupture : même tier
+T14  + T14    = T15
+T15  + T15    = T16
 ```
-
-Recette non définie → `Math.floor((tierA + tierB) / 2) + 1`
-
-Pas de matériau pour les armures — pas de recette matériau.
 
 ---
 
@@ -531,7 +529,7 @@ Pas de matériau pour les armures — pas de recette matériau.
 
 ```
 T(n) + T(n+1) = T(n+2)
-T(max-1) + T(max-1) = T(max)  ← exception dernier tier
+T(max-1) + T(max-1) = T(max)
 ```
 
 Recette non définie :
@@ -541,20 +539,14 @@ tierRésultant = Math.floor((tierA + tierB) / 2) + 1
 
 ### Matériau résultant
 
-Recettes valides :
 ```
 Bois(0)   + Cuivre(1) = Étain(2)
 Cuivre(1) + Étain(2)  = Bronze(3)
 Étain(2)  + Bronze(3) = Fer(4)
-Fer(4)    + Fer(4)    = Fonte(5)           ← 1ère rupture : même matériau
-Fonte(5)  + Bronze(3) = Acier(6)           ← 2ème rupture : bronze affine la fonte
-Acier(6)  + Acier(6)  = Acier damascène(7) ← 3ème rupture : même matériau
+Fer(4)    + Fer(4)    = Fonte(5)
+Fonte(5)  + Bronze(3) = Acier(6)
+Acier(6)  + Acier(6)  = Acier damascène(7)
 ```
-
-**Logique narrative :**
-- Fer + Fer : le métal se densifie en se repliant → Fonte
-- Fonte + Bronze : le bronze affine et purifie la fonte → Acier
-- Acier + Acier : replié sur lui-même, atteint sa forme ultime → Acier damascène
 
 Recette non définie :
 ```javascript
@@ -564,22 +556,7 @@ matériauRésultant = Math.floor((indexA + indexB) / 2)
 ### Affinité résultante
 
 ```javascript
-affinitéRésultante = Math.floor((affinitéA + affinitéB) / 2)  // par famille
-```
-
-### Règles générales
-
-- Le joueur place 2 pièces sur la forge pour voir le résultat avant de confirmer
-- Tiers et matériaux non affichés — la découverte des recettes fait partie du jeu
-- Toute combinaison non valide = perte ou stagnation
-
-### Exemples
-
-```
-T1 Cuivre + T2 Étain  → T3 Bronze         (deux recettes valides)
-T1 Fonte  + T2 Bronze → T3 Acier          (tier valide, recette matériau valide)
-T1 Acier  + T2 Acier  → T3 Acier          (tier valide, pas de recette → moyenne 6)
-Fer       + Fonte     → même tier, Fer    (pas de recette → moyenne floor(4+5/2)=4)
+affinitéRésultante = Math.floor((affinitéA + affinitéB) / 2)
 ```
 
 ---
@@ -598,31 +575,15 @@ Fer       + Fonte     → même tier, Fer    (pas de recette → moyenne floor(4
 ### Règles d'équipement
 
 ```javascript
-// Arme 2 mains → vide automatiquement la main gauche
 if (arme.mains === 2) mainGauche = null
-
-// Main gauche accepte uniquement :
-// - arme 1 main
-// - bouclier
-// - vide
-
-// Arme 2 mains ne peut jamais être équipée en main gauche
-```
-
-### Poids porté
-
-```javascript
-poidsPorté = poidsMainDroite + poidsMainGauche + poidsArmureTotal
-// poidsMainGauche = 0 si vide, tier du bouclier, ou poids de l'arme gauche
+// Main gauche : arme 1 main, bouclier, ou vide
+// Arme 2 mains : main droite uniquement
 ```
 
 ### Bouclier — réduction supplémentaire si parade réussie
 
 ```javascript
-// Parade réussie avec bouclier
-réductionParade = bouclier.tier  // flat, comme l'armure
-
-// Dégâts finaux
+réductionParade = bouclier.tier
 dégâtsFinaux = Math.max(0, dégâtsBruts - réductionArmure - réductionParade)
 ```
 
@@ -630,14 +591,7 @@ dégâtsFinaux = Math.max(0, dégâtsBruts - réductionArmure - réductionParade
 
 ## Boucliers
 
-16 tiers. Même règle de progression à la forge que les armures :
-```
-T(n) + T(n+1) = T(n+2)   ← règle générale jusqu'à T13
-T14  + T14    = T15       ← 1ère rupture
-T15  + T15    = T16       ← 2ème rupture
-```
-
-Poids = tier. Réduction flat = tier (appliquée si parade réussie).
+16 tiers. Poids = tier. Réduction flat = tier (si parade réussie).
 
 | Tier | Bouclier |
 |---|---|
@@ -665,36 +619,14 @@ Poids = tier. Réduction flat = tier (appliquée si parade réussie).
 ### Les 6 familles
 
 ```
-Bestial
-Élémentaire
-Féérique
-Démoniaque
-Undead
-Reptilien
+Bestial, Élémentaire, Féérique, Démoniaque, Undead, Reptilien
 ```
 
 ### Système d'affinité
 
-Vaincre un ennemi → **+2** sur sa famille, **-1** sur les 2 familles suivantes dans la liste (circulaire).
+Vaincre un ennemi → **+2** sur sa famille, **-1** sur les 2 familles suivantes (circulaire).
 
-```
-Bestial     → +2  |  Élémentaire -1  |  Féérique -1
-Élémentaire → +2  |  Féérique -1     |  Démoniaque -1
-Féérique    → +2  |  Démoniaque -1   |  Undead -1
-Démoniaque  → +2  |  Undead -1       |  Reptilien -1
-Undead      → +2  |  Reptilien -1    |  Bestial -1
-Reptilien   → +2  |  Bestial -1      |  Élémentaire -1
-```
-
-**Logique narrative :**
-- Bestial (chaos) → perd contre loi (Élémentaire, Féérique)
-- Élémentaire (matériel) → perd contre autres plans (Féérique, Démoniaque)
-- Féérique (divin) → perd contre impie (Démoniaque, Undead)
-- Démoniaque (chaud) → perd contre froid (Undead, Reptilien)
-- Undead (mort) → perd contre vivant (Reptilien, Bestial)
-- Reptilien (calme) → perd contre sauvage (Bestial, Élémentaire)
-
-**Affinité max : 100** (~50 ennemis d'une même famille sans malus)
+**Affinité max : 100**
 
 ---
 
@@ -702,8 +634,8 @@ Reptilien   → +2  |  Bestial -1      |  Élémentaire -1
 
 ### Dans le donjon (canvas)
 
-- Joueur : silhouette Unicode
-- Ennemis : emojis Unicode (ex: gobelin 👺)
+- Joueur : 🧙
+- Ennemis : 👺
 - Escalier : 🔽
 - Forge : ⚒️
 - Terrain d'entraînement : 🎯
@@ -712,93 +644,93 @@ Reptilien   → +2  |  Bestial -1      |  Élémentaire -1
 
 1. **Écran de préparation** : choix EO/NA/EN par minute + équipement
 2. **Résolution automatique** côté serveur
-3. **Écran de résultat** : journal minute par minute avec tags colorés et qualités
+3. **Écran de résultat** : journal minute par minute
 
 **Tags de résultat :**
-- 🔴 Touché
-- 🟢 Esquivé
-- 🔵 Paré
-- ⚫ Raté
+- 🔴 Touché — 🟢 Esquivé — 🔵 Paré — ⚫ Raté
 
 ---
 
 ## Roadmap v2
 
-- Localisation des dégâts (40% corps, 25% jambes, 25% bras, 10% tête)
-- Effets critiques par zone (malus stats selon zone endommagée)
-- Ciblage de zone via la stratégie
-- Créatures mobiles dans le donjon
-- Furtivité (classes)
+- Localisation des dégâts
+- Effets critiques par zone
+- Créatures mobiles
+- Furtivité
 - Marchand
 - Multijoueur PvPvE
+
 ---
 
 ## Architecture des données
 
-### Données statiques (fichiers JSON — chargés au démarrage)
+### Données statiques (fichiers JSON)
 
 ```
 server/data/
-├── weapons.json      // table des 18 types d'armes
-├── armors.json       // table des armures par emplacement
-├── shields.json      // table des boucliers
-└── bestiary.json     // créatures avec stats et stratégies
+├── weapons.json
+├── armors.json
+├── shields.json
+└── bestiary.json
 ```
 
-### Données dynamiques (SQLite — progression joueur)
+### Données dynamiques (SQLite)
 
 ```sql
--- Profil méta (persiste entre les runs)
 players
   id, name, niveauMaxFranchi, createdAt
 
--- Run en cours
 runs
-  id, playerId, etageActuel, statut (actif/mort), createdAt
+  id, playerId, etageActuel, statut, createdAt
 
--- Personnage du run
-character
-  id, runId, force, constitution, taille, intelligence,
-  volonte, vitesse, adresse, hp, endurance,
+characters
+  id, runId,
+  force, constitution, taille, intelligence, volonte, vitesse, adresse,
+  force_base, constitution_base, taille_base, intelligence_base,
+  volonte_base, vitesse_base, adresse_base,
+  hp, endurance,
   augmentations (JSON — nb augmentations par stat)
 
--- Inventaire du run
 inventory
-  id, runId, itemType (weapon/armor/shield), itemCode,
+  id, runId, itemType, itemCode,
   tier, material,
   aff_bestial, aff_elementaire, aff_feerique,
   aff_demoniaque, aff_undead, aff_reptilien,
-  equipped (boolean),
-  slot (corps/tete/bras/jambes),         -- armures uniquement
-  equippedSlot (rightHand/leftHand)      -- armes et boucliers uniquement
+  equipped,
+  slot (corps/tete/bras/jambes),
+  equippedSlot (rightHand/leftHand)
 
--- Étages visités du run
 floors
   id, runId, etage, dungeon (JSON), cleared
 ```
 
-### Structure serveur
+### Structure client
 
 ```
-server/
-├── db/
-│   ├── database.js    // connexion SQLite (better-sqlite3)
-│   ├── schema.js      // création des tables
-│   └── queries.js     // fonctions CRUD
-└── data/
-    ├── weapons.json
-    ├── armors.json
-    ├── shields.json
-    └── bestiary.json
+client/js/
+├── core/
+│   ├── constants.js    // SCREENS, LAYOUT, getLayout()
+│   ├── theme.js        // THEME — couleurs et polices
+│   ├── gamedata.js     // données statiques + MATERIALS
+│   ├── damagecalc.js   // calcul dégâts côté client
+│   └── equipchecks.js  // contraintes de maniement
+└── ui/
+    ├── camp.js
+    ├── training.js
+    ├── render.js
+    └── components/
+        ├── characterCard.js
+        └── equipPanel.js
 ```
 
 ### Ordre de développement
 
 ```
-1. Donjon enrichi (créatures, forge, entraînement, passage)
-2. Inventaire (stockage SQLite)
-3. Équipement (armes, armures, bouclier)
-4. Forge (fusion tier + matériau + affinité)
-5. Entraînement (jet de chance selon volonté)
+1. Donjon enrichi (créatures, forge, entraînement, passage) ✅
+2. Inventaire ✅
+3. Équipement (armes) ✅
+4. Entraînement ✅
+5. Forge
 6. Combat (resolver.js)
+7. Armures et boucliers
 ```
