@@ -46,9 +46,11 @@ export function computeEquipMessages(playerStats, playerName, rightDef, leftDef,
     }
   }
 
+  /*      
   if (messages.length === 0 && (rightDef || leftDef)) {
     messages.push(`${playerName} manie ${buildEquipSummary(rightDef, leftDef, leftIsShield)} avec aisance.`);
   }
+  */
 
   return messages;
 }

@@ -1,20 +1,6 @@
 /*
   SERVER/GAME/WORLD.JS
   Génération du donjon, déplacements, collisions.
-
-  Algorithme : Recursive Backtracking + passages supplémentaires
-  generateDungeon() retourne un objet enrichi :
-  {
-    grid,       // grille 2D (0=passage, 1=mur)
-    creatures,  // 4 créatures placées aléatoirement
-    forge,      // position de la forge
-    training,   // position du terrain d'entraînement
-    exit        // position du passage vers l'étage suivant
-  }
-
-  Déplacement :
-  - move       : tente le déplacement, retourne confirm si case spéciale
-  - move:confirm : confirme le déplacement après dialog côté client
 */
 
 import { DUNGEON_CONFIG } from "../config.js";
@@ -90,10 +76,8 @@ function generateGrid(rows, cols, extraPaths) {
 
   const stack = [{ x: startX, y: startY }];
   const directions = [
-    { dx: 2, dy: 0 },
-    { dx: -2, dy: 0 },
-    { dx: 0, dy: 2 },
-    { dx: 0, dy: -2 }
+    { dx: 2, dy: 0 }, { dx: -2, dy: 0 },
+    { dx: 0, dy: 2 }, { dx: 0, dy: -2 }
   ];
 
   while (stack.length > 0) {
@@ -103,19 +87,12 @@ function generateGrid(rows, cols, extraPaths) {
     for (const { dx, dy } of directions) {
       const nx = current.x + dx;
       const ny = current.y + dy;
-
       if (nx > 0 && nx < cols - 1 && ny > 0 && ny < rows - 1 && grid[ny][nx] === 1) {
-        neighbors.push({
-          x: nx, y: ny,
-          between: { x: current.x + dx / 2, y: current.y + dy / 2 }
-        });
+        neighbors.push({ x: nx, y: ny, between: { x: current.x + dx / 2, y: current.y + dy / 2 } });
       }
     }
 
-    if (neighbors.length === 0) {
-      stack.pop();
-      continue;
-    }
+    if (neighbors.length === 0) { stack.pop(); continue; }
 
     const next = neighbors[Math.floor(Math.random() * neighbors.length)];
     grid[next.between.y][next.between.x] = 0;
@@ -123,9 +100,7 @@ function generateGrid(rows, cols, extraPaths) {
     stack.push({ x: next.x, y: next.y });
   }
 
-  // Passages supplémentaires
   const extraPassages = Math.floor((rows * cols) * extraPaths);
-
   for (let i = 0; i < extraPassages; i++) {
     const x = Math.floor(Math.random() * (cols - 2)) + 1;
     const y = Math.floor(Math.random() * (rows - 2)) + 1;
@@ -152,7 +127,10 @@ function generateGrid(rows, cols, extraPaths) {
 
 // ─── Placement des éléments ───────────────────────────────────────────────────
 
-function placeElements(grid) {
+/**
+ * @param {Array} bestiary — liste des créatures du bestiary (filtrée par tier)
+ */
+function placeElements(grid, bestiary) {
   const tiles = shuffle(getWalkableTiles(grid));
 
   if (tiles.length < 7) {
@@ -161,9 +139,17 @@ function placeElements(grid) {
 
   let idx = 0;
 
+  // 4 créatures — id assigné depuis le bestiary selon le tier du donjon
   const creatures = [];
   for (let i = 0; i < 4; i++) {
-    creatures.push({ x: tiles[idx].x, y: tiles[idx].y, defeated: false });
+    // Sélection aléatoire dans le bestiary disponible
+    const creatureDef = bestiary[Math.floor(Math.random() * bestiary.length)];
+    creatures.push({
+      x:        tiles[idx].x,
+      y:        tiles[idx].y,
+      defeated: false,
+      id:       creatureDef.id   // référence vers bestiary.json
+    });
     idx++;
   }
 
@@ -176,63 +162,50 @@ function placeElements(grid) {
 
 // ─── Export principal ─────────────────────────────────────────────────────────
 
-export function generateDungeon() {
+/**
+ * @param {Array} bestiary — chargé depuis bestiary.json côté serveur
+ */
+export function generateDungeon(bestiary) {
+  if (!bestiary?.length) throw new Error("generateDungeon: bestiary manquant ou vide");
   const { rows, cols, extraPaths } = DUNGEON_CONFIG;
   const grid = generateGrid(rows, cols, extraPaths);
-  const { creatures, forge, training, exit } = placeElements(grid);
+  const { creatures, forge, training, exit } = placeElements(grid, bestiary);
   return { grid, creatures, forge, training, exit };
 }
 
 // ─── Détection case spéciale ──────────────────────────────────────────────────
 
-/**
- * Retourne les infos de confirmation si la case (x, y) est spéciale.
- * Retourne null si la case est ordinaire.
- */
-function getSpecialTile(dungeon, x, y) {
+function getSpecialTile(dungeon, x, y, bestiary) {
   const { creatures, forge, training, exit } = dungeon;
 
-  // Créature vivante
   const creature = creatures?.find(c => !c.defeated && c.x === x && c.y === y);
   if (creature) {
+    // Récupérer le nom de la créature pour le message de confirmation
+    const def    = bestiary?.find(b => b.id === creature.id);
+    const name   = def?.nameFr ?? "une créature";
     return {
-      type:    "creature",
-      label:   "Êtes-vous sûr de vouloir affronter cette créature ?",
-      data:    { creature }
+      type:  "creature",
+      label: `Êtes-vous sûr de vouloir affronter ${name} ?`,
+      data:  { creature }
     };
   }
 
-  // Forge
   if (forge && forge.x === x && forge.y === y) {
-    return {
-      type:  "forge",
-      label: "Êtes-vous sûr de vouloir utiliser la forge ?",
-      data:  {}
-    };
+    return { type: "forge", label: "Êtes-vous sûr de vouloir utiliser la forge ?", data: {} };
   }
 
-  // Terrain d'entraînement
   if (training && training.x === x && training.y === y) {
-    return {
-      type:  "training",
-      label: "Êtes-vous sûr de vouloir aller au terrain d'entraînement ?",
-      data:  { used: training.used }
-    };
+    return { type: "training", label: "Êtes-vous sûr de vouloir aller au terrain d'entraînement ?", data: { used: training.used } };
   }
 
-  // Sortie
   if (exit && exit.x === x && exit.y === y) {
-    return {
-      type:  "exit",
-      label: "Êtes-vous sûr de vouloir passer à l'étage suivant ?",
-      data:  {}
-    };
+    return { type: "exit", label: "Êtes-vous sûr de vouloir passer à l'étage suivant ?", data: {} };
   }
 
   return null;
 }
 
-// ─── Déplacement (validation serveur) ────────────────────────────────────────
+// ─── Déplacement ─────────────────────────────────────────────────────────────
 
 function movePlayer(session, dx, dy) {
   if (!session?.player) throw new Error("movePlayer: session.player manquant");
@@ -246,26 +219,17 @@ function movePlayer(session, dx, dy) {
   if (newX < 0 || newX >= dungeon.grid[0].length) return { ok: false, error: "Hors limites" };
   if (dungeon.grid[newY][newX] !== 0)             return { ok: false, error: "Mur" };
 
-  // Vérifier si la case de destination est spéciale
-  const special = getSpecialTile(dungeon, newX, newY);
+  const special = getSpecialTile(dungeon, newX, newY, session.bestiary);
   if (special) {
-    // Ne pas déplacer — demander confirmation au client
     return {
       ok:      true,
-      confirm: {
-        type:      special.type,
-        label:     special.label,
-        data:      special.data,
-        direction: { dx, dy }  // mémorisé pour move:confirm
-      }
+      confirm: { type: special.type, label: special.label, data: special.data, direction: { dx, dy } }
     };
   }
 
-  // Case ordinaire — déplacer directement
   player.position.x = newX;
   player.position.y = newY;
   session.turn++;
-
   return { ok: true };
 }
 
@@ -284,12 +248,11 @@ function confirmMove(session, dx, dy) {
   player.position.y = newY;
   session.turn++;
 
-  // Retourner le type de case pour que le client lance la bonne action
-  const special = getSpecialTile(dungeon, newX, newY);
+  const special = getSpecialTile(dungeon, newX, newY, session.bestiary);
   return { ok: true, specialType: special?.type ?? null };
 }
 
-// ─── Dispatcher des actions joueur ───────────────────────────────────────────
+// ─── Dispatcher ──────────────────────────────────────────────────────────────
 
 export function handlePlayerAction(session, action) {
   switch (action.type) {
@@ -308,13 +271,10 @@ export function handlePlayerAction(session, action) {
     }
 
     case "move:confirm": {
-      if (!action.dx && action.dx !== 0) return { ok: false, error: "dx manquant" };
-      if (!action.dy && action.dy !== 0) return { ok: false, error: "dy manquant" };
+      if (action.dx === undefined) return { ok: false, error: "dx manquant" };
+      if (action.dy === undefined) return { ok: false, error: "dy manquant" };
       return confirmMove(session, action.dx, action.dy);
     }
-
-    case "attack":
-      return { ok: false, error: "Système de combat pas encore implémenté" };
 
     default:
       return { ok: false, error: `Action inconnue : ${action.type}` };

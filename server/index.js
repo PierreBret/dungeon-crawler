@@ -13,27 +13,29 @@ import { fileURLToPath } from "url";
 import { createSession, getSession, deleteSession } from "./state/gameState.js";
 import { handlePlayerAction } from "./game/world.js";
 import { generateCandidate, rollDie } from "./game/player.js";
+import { resolveCombat }      from "./game/combat.js";
 import { initSchema }         from "./db/schema.js";
 import {
-  createPlayer    as dbCreatePlayer,
-  createRun       as dbCreateRun,
-  createCharacter as dbCreateCharacter,
-  addItem         as dbAddItem,
-  getInventory    as dbGetInventory,
-  getCharacter    as dbGetCharacter,
-  equipItem       as dbEquipItem,
-  unequipItem     as dbUnequipItem,
-  unequipSlot     as dbUnequipSlot,
-  removeItem      as dbRemoveItem,
-  saveFloor       as dbSaveFloor,
-  updateRunStatut as dbUpdateRunStatut,
-  incrementStat   as dbIncrementStat
+  createPlayer              as dbCreatePlayer,
+  createRun                 as dbCreateRun,
+  createCharacter           as dbCreateCharacter,
+  addItem                   as dbAddItem,
+  getInventory              as dbGetInventory,
+  getCharacter              as dbGetCharacter,
+  equipItem                 as dbEquipItem,
+  unequipItem               as dbUnequipItem,
+  unequipSlot               as dbUnequipSlot,
+  removeItem                as dbRemoveItem,
+  saveFloor                 as dbSaveFloor,
+  updateRunStatut           as dbUpdateRunStatut,
+  incrementStat             as dbIncrementStat,
+  updateCharacterHpEndurance as dbUpdateCharacterHpEndurance
 } from "./db/queries.js";
 
 initSchema();
 
 // ─── Mode développement ───────────────────────────────────────────────────────
-// Défini dans .env : DEV_MODE=true → mode test, DEV_MODE=false → mode normal
+
 const DEV_MODE = process.env.DEV_MODE === "true";
 console.log(`[Config] DEV_MODE = ${DEV_MODE}`);
 
@@ -48,18 +50,19 @@ const io = new Server(httpServer, {
 
 app.use(express.static(join(__dirname, "..", "client")));
 
-// ─── API REST — données statiques ─────────────────────────────────────────────
+// ─── Données statiques ────────────────────────────────────────────────────────
 
 function loadJSON(filename) {
   return JSON.parse(readFileSync(join(__dirname, "data", filename), "utf8"));
 }
 
-const weapons = loadJSON("weapons.json");
+const weapons  = loadJSON("weapons.json");
+const bestiary = loadJSON("bestiary.json");
 
 app.get("/api/data/weapons",  (req, res) => res.json(weapons));
 app.get("/api/data/armors",   (req, res) => res.json(loadJSON("armors.json")));
 app.get("/api/data/shields",  (req, res) => res.json(loadJSON("shields.json")));
-app.get("/api/data/bestiary", (req, res) => res.json(loadJSON("bestiary.json")));
+app.get("/api/data/bestiary", (req, res) => res.json(bestiary));
 
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 
@@ -82,48 +85,37 @@ io.on("connection", (socket) => {
       return callback({ ok: false, error: "candidate manquant" });
     }
 
-    const session = createSession(socket.id, data.candidate);
-
-    // Transmettre devMode au client dans le state initial
-    const state = session.getPublicState();
+    // bestiary passé à createSession pour generateDungeon
+    const session = createSession(socket.id, data.candidate, bestiary);
+    const state   = session.getPublicState();
     state.devMode = DEV_MODE;
 
     try {
-      const playerId = dbCreatePlayer(data.candidate.name);
-      const runId    = dbCreateRun(playerId);
-      const { stats } = session.player;
+      const playerId   = dbCreatePlayer(data.candidate.name);
+      const runId      = dbCreateRun(playerId);
+      const { stats }  = session.player;
 
-      dbCreateCharacter(runId, stats, 0, 0); // hp/endurance non utilisés pour l'instant
+      dbCreateCharacter(runId, stats, 0, 0);
 
-      // ─── Armes de départ selon le mode ───────────────────────────────────
       if (DEV_MODE) {
-        // Mode test : une arme de chaque type
         for (const weapon of weapons) {
           dbAddItem(runId, {
-            itemType:     "weapon",
-            itemCode:     weapon.code,
-            tier:         1,
-            material:     0,
-            affinities:   { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
-            equipped:     0,
-            equippedSlot: null
+            itemType: "weapon", itemCode: weapon.code,
+            tier: 1, material: 0,
+            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+            equipped: 0, equippedSlot: null
           });
         }
       } else {
-        // Mode normal : épée courte en bois uniquement
         dbAddItem(runId, {
-          itemType:     "weapon",
-          itemCode:     "SH",  // Epée courte
-          tier:         1,
-          material:     0,     // Bois
-          affinities:   { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
-          equipped:     0,
-          equippedSlot: null
+          itemType: "weapon", itemCode: "SH",
+          tier: 1, material: 0,
+          affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+          equipped: 0, equippedSlot: null
         });
       }
 
       dbSaveFloor(runId, 1, state.dungeon);
-
       session.playerId = playerId;
       session.runId    = runId;
       session.etage    = 1;
@@ -156,9 +148,7 @@ io.on("connection", (socket) => {
     try {
       dbUnequipSlot(session.runId, data.slot);
       const weaponDef = weapons.find(w => w.code === data.itemCode);
-      if (weaponDef?.hd === 2) {
-        dbUnequipSlot(session.runId, "leftHand");
-      }
+      if (weaponDef?.hd === 2) dbUnequipSlot(session.runId, "leftHand");
       dbEquipItem(data.itemId, data.slot);
       callback({ ok: true });
     } catch (err) {
@@ -203,13 +193,11 @@ io.on("connection", (socket) => {
     const result = handlePlayerAction(session, action);
     if (!result.ok) return callback({ ok: false, error: result.error });
 
-    // Case spéciale détectée — retourner confirmation sans déplacer
     if (result.confirm) {
       return callback({ ok: true, confirm: result.confirm });
     }
 
     const state = session.getPublicState();
-
     try {
       if (session.runId) dbSaveFloor(session.runId, session.etage ?? 1, state.dungeon);
     } catch (err) {
@@ -224,38 +212,128 @@ io.on("connection", (socket) => {
       console.error("[training:attempt] stat manquante");
       return callback({ ok: false, error: "stat manquante" });
     }
-
     const session = getSession(socket.id);
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
-
     try {
       const character     = dbGetCharacter(session.runId);
       const augmentations = JSON.parse(character.augmentations ?? "{}");
       const nbAug         = augmentations[data.stat] ?? 0;
-
-      // Formule GD : chance max 95%
-      const chance  = Math.min((character.volonte * 5) / (1 + nbAug), 95);
-      const roll = rollDie(1, 100);
-      const success = roll <= chance;
+      const chance        = Math.min((character.volonte * 5) / (1 + nbAug), 95);
+      const roll          = rollDie(1, 100);
+      const success       = roll <= chance;
 
       if (success) {
         augmentations[data.stat] = nbAug + 1;
         dbIncrementStat(session.runId, data.stat, augmentations);
-
-        // Mettre à jour les stats en session
         const statKey = data.stat === "volonte" ? "volonté" : data.stat;
         session.player.stats[statKey] = (session.player.stats[statKey] ?? 0) + 1;
         session.augmentations = augmentations;
       }
 
-      callback({
-        ok:      true,
-        success,
-        chance:  Math.floor(chance),
-        roll:    Math.floor(roll)
-      });
+      callback({ ok: true, success, chance: Math.floor(chance), roll: Math.floor(roll) });
     } catch (err) {
       console.error("[training:attempt] Erreur :", err.message);
+      callback({ ok: false, error: err.message });
+    }
+  });
+
+  socket.on("combat:resolve", (data, callback) => {
+    if (!data.strategy) {
+      console.error("[combat:resolve] strategy manquante");
+      return callback({ ok: false, error: "strategy manquante" });
+    }
+    if (data.creatureIndex === undefined) {
+      console.error("[combat:resolve] creatureIndex manquant");
+      return callback({ ok: false, error: "creatureIndex manquant" });
+    }
+
+    const session = getSession(socket.id);
+    if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
+
+    try {
+      const creature = session.dungeon.creatures[data.creatureIndex];
+      if (!creature)         return callback({ ok: false, error: "Créature introuvable" });
+      if (creature.defeated) return callback({ ok: false, error: "Créature déjà vaincue" });
+
+      const creatureDef = bestiary.find(b => b.id === creature.id);
+      if (!creatureDef)  return callback({ ok: false, error: `Def introuvable pour id="${creature.id}"` });
+
+      const creatureWeaponDef = weapons.find(w => w.code === creatureDef.equipment?.rightHand?.code);
+
+      // HP joueur depuis BDD (ou calculé si première fois)
+      const character  = dbGetCharacter(session.runId);
+      const playerHp   = character.hp > 0
+        ? character.hp
+        : session.player.stats.constitution * 2 + session.player.stats.taille;
+
+      // HP créature
+      const creatureHp = creatureDef.stats.constitution * 2 + creatureDef.stats.taille;
+
+      // Arme équipée du joueur
+      const inventory       = dbGetInventory(session.runId);
+      const equippedItem    = inventory.find(i => i.equippedSlot === "rightHand");
+      const playerWeaponDef = equippedItem ? weapons.find(w => w.code === equippedItem.itemCode) : null;
+
+      const playerData = {
+        name:       session.player.name,
+        stats:      session.player.stats,
+        hp:         playerHp,
+        strategy:   data.strategy,
+        weaponDef:  playerWeaponDef,
+        weaponItem: equippedItem,
+        equipment:  null  // armures non implémentées
+      };
+
+      const creatureData = {
+        nameFr:    creatureDef.nameFr,
+        stats:     creatureDef.stats,
+        hp:        creatureHp,
+        weaponDef: creatureWeaponDef,
+        equipment: creatureDef.equipment,
+        strategy:  creatureDef.strategy
+      };
+
+      const result = resolveCombat(playerData, creatureData);
+
+      // Mettre à jour HP joueur en BDD
+      dbUpdateCharacterHpEndurance(session.runId, result.playerHpFinal, character.endurance ?? 0);
+
+      // Victoire — marquer créature vaincue + drop
+      let drop = null;
+      if (result.winner === "player") {
+        creature.defeated = true;
+        dbSaveFloor(session.runId, session.etage ?? 1, session.dungeon);
+
+        const dropDef = creatureDef.drops?.weapon;
+        if (dropDef && Math.random() < (dropDef.chance ?? 1)) {
+          const dungeonLevel = session.etage ?? 1;
+          const maxTier      = Math.min(Math.ceil(dungeonLevel / 10) + 1, 2);
+          const maxMat       = Math.min(Math.ceil(dungeonLevel / 10) + 1, 2);
+          const dropTier     = rollDie(1, maxTier);
+          const dropMat      = rollDie(0, maxMat - 1);
+
+          drop = {
+            itemType:   "weapon",
+            itemCode:   dropDef.code,
+            tier:       dropTier,
+            material:   dropMat,
+            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
+          };
+          dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
+        }
+      }
+
+      callback({
+        ok:              true,
+        log:             result.log,
+        winner:          result.winner,
+        playerHpFinal:   result.playerHpFinal,
+        creatureHpFinal: result.creatureHpFinal,
+        drop
+      });
+
+    } catch (err) {
+      console.error("[combat:resolve] Erreur :", err.message);
       callback({ ok: false, error: err.message });
     }
   });

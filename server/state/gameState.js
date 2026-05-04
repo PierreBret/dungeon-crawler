@@ -13,15 +13,18 @@ const sessions = new Map();
 // ─── Classe GameSession ───────────────────────────────────────────────────────
 
 class GameSession {
-  constructor(socketId, candidate) {
-    this.socketId     = socketId;
-    this.dungeon      = generateDungeon();
-    this.player       = createPlayer(candidate, this.dungeon.grid);
-    this.screen       = "dungeon";
-    this.turn         = 0;
-    this.etage        = 1;
-    this.combatLog    = [];
-    this.augmentations = {}; // { stat: nbAugmentations } — mis à jour après chaque entraînement
+  constructor(socketId, candidate, bestiary) {
+    if (!bestiary?.length) throw new Error("GameSession: bestiary manquant");
+
+    this.socketId      = socketId;
+    this.bestiary      = bestiary; // référence pour getSpecialTile dans world.js
+    this.dungeon       = generateDungeon(bestiary);
+    this.player        = createPlayer(candidate, this.dungeon.grid);
+    this.screen        = "dungeon";
+    this.turn          = 0;
+    this.etage         = 1;
+    this.combatLog     = [];
+    this.augmentations = {}; // { stat: nbAugmentations }
   }
 
   getPublicState() {
@@ -38,8 +41,8 @@ class GameSession {
         avatarPath:    this.player.avatarPath,
         stats:         this.player.stats,
         position:      this.player.position,
-        etage:         this.etage,          // niveau de donjon actuel (1-100)
-        augmentations: this.augmentations   // nb augmentations par stat
+        etage:         this.etage,
+        augmentations: this.augmentations
       },
       screen:    this.screen,
       turn:      this.turn,
@@ -54,8 +57,8 @@ class GameSession {
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
-export function createSession(socketId, candidate) {
-  const session = new GameSession(socketId, candidate);
+export function createSession(socketId, candidate, bestiary) {
+  const session = new GameSession(socketId, candidate, bestiary);
   sessions.set(socketId, session);
   return session;
 }

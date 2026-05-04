@@ -249,159 +249,7 @@ pour permettre de calculer le nombre d'augmentations par stat.
 
 ## Système de combat
 
-### Philosophie
-
-- Résolution probabiliste multicouches
-- Séparation claire : toucher / défense / dégâts
-- Forte influence des choix tactiques
-- Une seule source d'aléa par étape
-- Chaque action produit une qualité — opposition de qualités
-- Jeu tactique — pas de pression temporelle, pas de réflexes requis
-
-### Stratégie (définie minute par minute, minutes 1 à 5)
-
-Trois paramètres entre 1 et 10 :
-
-| Paramètre | Signification |
-|---|---|
-| EO (Effort Offensif) | Ratio attaque/défense |
-| NA (Niveau d'Activité) | Intensité physique |
-| EN (Engagement) | Distance de combat (1=loin, 10=corps à corps) |
-
-**Modificateurs dérivés (interpolation linéaire 1→10 donne 0.8→1.2) :**
-
-| Modificateur | Paramètres |
-|---|---|
-| Vivacité | +EO +NA |
-| Initiative | +EO +EN |
-| Précision (attaque) | +NA +EN |
-| Esquive | -EO +NA -EN |
-| Parade | -EO -NA +EN |
-| Riposte | -EO +NA +EN |
-| Fatigue | +EO +NA |
-
-**Archétypes de référence :**
-
-| EO/NA/EN | Style |
-|---|---|
-| 10/10/10 | Berzerker — aucune défense, épuisement rapide |
-| 10/10/1 | Duelliste attaquant |
-| 10/1/10 | Attaquant statique corps à corps |
-| 1/10/10 | Défenseur mobile corps à corps |
-| 1/10/1 | Défenseur mobile désengagé — esquive parfaite |
-| 1/1/10 | Contre-attaquant — parade + riposte |
-| 1/1/1 | Parade complète — épuise l'adversaire |
-
-### Résolution du combat (boucle par minute)
-
-1. **Vivacité** : chaque combattant tire `vivaciteScore - d100`. Si ≤ 0 → pas d'opportunité. Le plus haut attaque.
-2. **Attaque** : `attackQuality = attackScore - d100`. Si ≤ 0 → raté.
-3. **Défense** : le défenseur choisit automatiquement la meilleure option selon ses scores et son endurance.
-   - Esquive réussie si `dodgeQuality > attackQuality`
-   - Parade réussie si `parryQuality > attackQuality`
-   - Si endurance insuffisante → subit sans défense
-4. **Riposte** : après une attaque ratée, parée ou esquivée, le défenseur tente une riposte.
-   - Si attaque ratée → jet de riposte simple
-   - Si attaque parée ou esquivée → jet de riposte en opposition avec l'initiative de l'attaquant
-5. **Dégâts** : si défense échouée → jet indépendant puis réduction armure
-6. **Endurance** : coût par action + coût minimum par minute
-
-### Résolution de la riposte
-
-```javascript
-// Score de riposte (modifié par -EO +NA +EN)
-riposteScore   = intelligence + adresse * 0.5 + vitesse * 0.5
-riposteQuality = riposteScore - d100  // une seule source d'aléa
-
-// Cas 1 — attaque ratée : riposte simple
-if (riposteQuality > 0) {
-  lancerAttaque(défenseur, attaquant, bonusQualité = +20)
-}
-
-// Cas 2 — attaque parée ou esquivée : opposition avec l'initiative de l'attaquant
-initQuality = initScore - d100  // jet de l'attaquant
-
-if (riposteQuality > initQuality) {
-  lancerAttaque(défenseur, attaquant, bonusQualité = +20)
-} else {
-  // L'attaquant conserve l'initiative → pas de riposte
-}
-
-// Résolution de l'attaque de riposte
-attackQuality = attackScore - d100 + 20  // +20 bonus riposte
-```
-
-**Principe :** une riposte est plus difficile à défendre, mais ne fait pas plus de dégâts.
-Le modificateur `(-EO +NA +EN)` s'applique à `riposteScore` — archétype `(1/10/10)` = meilleur riposteur.
-
-### Calcul des dégâts
-
-```javascript
-dégâtsBruts = baseArme * modMatériau * modAffinité * coefStats * modTypeDégats
-
-// Réduction armure (v1 — pas de localisation)
-réductionArmure = Math.floor(
-  (armure.corps.tier + armure.tête.tier + armure.bras.tier + armure.jambes.tier) / 4
-)
-
-dégâtsFinaux = Math.max(0, dégâtsBruts - réductionArmure)
-
-// v2 — localisation des dégâts
-// zoneTouchée = aléatoire (40% corps, 25% jambes, 25% bras, 10% tête)
-// réductionArmure = armure[zoneTouchée].tier
-```
-
-**Détail des composantes :**
-
-```javascript
-// baseArme : interpolation linéaire entre damFirst (T1) et damLast (dernier tier)
-// nbTiers déduit du nombre de modèles dans weapons.json
-baseArme = damFirst + (damLast - damFirst) * (tier - 1) / (nbTiers - 1)
-
-// modMatériau : 1.0 (Bois) → 2.0 (Acier damascène) — voir table matériaux
-
-// modAffinité : basé sur l'affinité de l'arme contre la famille de l'ennemi (-100 à +100)
-modAffinité = 1 + (affinité / 100)
-
-// coefStats : influence modérée des stats du combattant (plage 0.8 → 1.2)
-coefStats = 1
-  + (force - 12)        * 0.02 * poidsForce
-  + (adresse - 12)      * 0.02 * poidsAdresse
-  + (vitesse - 12)      * 0.02 * poidsVitesse
-  + (taille - 12)       * 0.02 * poidsTaille
-  + (intelligence - 12) * 0.02 * poidsIntelligence
-```
-
-**Types de dégâts vs armure et défense :**
-
-| Type | vs Armure lourde | vs Armure légère | vs Parade | vs Esquive |
-|---|---|---|---|---|
-| Impact | Faible (0.9) | Fort (1.1) | Fort (1.1) | Faible (0.9) |
-| Blunt | Très fort (1.2) | Très faible (0.8) | Très fort (1.2) | Très faible (0.8) |
-| Pierce | Fort (1.1) | Faible (0.9) | Très faible (0.8) | Très fort (1.2) |
-| Edged | Très faible (0.8) | Très fort (1.2) | Faible (0.9) | Fort (1.1) |
-
-*Note : armure lourde = tier armure corps > 8, armure légère = tier ≤ 8*
-
-### Portée optimale par arme
-
-```javascript
-écartPortée = Math.abs(EN - portéeOptimale)
-modPortée_Precision = 1 - écartPortée * 0.08
-modPortée_Degats    = 1 - écartPortée * 0.04
-```
-
-### Endurance — coûts
-
-```javascript
-poidsPorté    = poidsMainDroite + poidsMainGauche + poidsArmureTotal
-coutAction    = coutBase * poidsPorté
-coutMinMinute = Math.floor(NA * 0.2 + EO * 0.1)  // anti-stalemate
-```
-
-**Seuils :**
-- Endurance < 25% → fatigueRatio appliqué à tous les jets
-- Endurance = 0 → épuisé, hors combat
+> La logique complète de résolution du combat (boucle, formules, dégâts) est dans **combat_algorithm.md**.
 
 ---
 
@@ -418,16 +266,24 @@ Vérifiées à l'équipement et affichées dans le panneau droit (mode équip).
 
 ---
 
-## Navigation dans le donjon
+## Équipement — Main droite et main gauche
 
-Toute case spéciale requiert une confirmation avant d'y entrer :
-- "Êtes-vous sûr de vouloir affronter cette créature ?"
-- "Êtes-vous sûr de vouloir aller au terrain d'entraînement ?"
-- "Êtes-vous sûr de vouloir utiliser la forge ?"
-- "Êtes-vous sûr de vouloir passer à l'étage suivant ?"
+### Combinaisons possibles
 
-En cas de refus, le joueur reste sur sa case adjacente.
-Navigation dialog : ←/→ pour Oui/Non, Entrée pour valider. Non par défaut.
+| Système | Vivacité | Initiative | Parade | Poids porté |
+|---|---|---|---|---|
+| Arme 1 main seule | Normal | Normal | Sans bonus | Arme |
+| Arme 2 mains | Normal | Normal | Sans bonus | Arme |
+| 2 armes 1 main | ×1.2 | ×1.2 | ×1.15 | 2 armes |
+| Arme 1 main + bouclier | Normal | Normal | ×1.3 + réduction flat | Arme + bouclier |
+
+### Règles d'équipement
+
+```javascript
+if (arme.mains === 2) mainGauche = null
+// Main gauche : arme 1 main, bouclier, ou vide
+// Arme 2 mains : main droite uniquement
+```
 
 ---
 
@@ -523,6 +379,31 @@ T15  + T15    = T16
 
 ---
 
+## Boucliers
+
+16 tiers. Poids = tier. Réduction flat = tier (si parade réussie).
+
+| Tier | Bouclier |
+|---|---|
+| 1 | Buckler |
+| 2 | Targe |
+| 3 | Pelta Shield |
+| 4 | Quad Shield |
+| 5 | Circle Shield |
+| 6 | Tower Shield |
+| 7 | Spiked Shield |
+| 8 | Round Shield |
+| 9 | Kite Shield |
+| 10 | Casserole Shield |
+| 11 | Heater Shield |
+| 12 | Oval Shield |
+| 13 | Knight Shield |
+| 14 | Hoplite Shield |
+| 15 | Jazeraint Shield |
+| 16 | Dread Shield |
+
+---
+
 ## Forge — Armes
 
 ### Tier résultant
@@ -561,59 +442,6 @@ affinitéRésultante = Math.floor((affinitéA + affinitéB) / 2)
 
 ---
 
-## Équipement — Main droite et main gauche
-
-### Combinaisons possibles
-
-| Système | Vivacité | Initiative | Parade | Poids porté |
-|---|---|---|---|---|
-| Arme 1 main seule | Normal | Normal | Sans bonus | Arme |
-| Arme 2 mains | Normal | Normal | Sans bonus | Arme |
-| 2 armes 1 main | ×1.2 | ×1.2 | ×1.15 | 2 armes |
-| Arme 1 main + bouclier | Normal | Normal | ×1.3 + réduction flat | Arme + bouclier |
-
-### Règles d'équipement
-
-```javascript
-if (arme.mains === 2) mainGauche = null
-// Main gauche : arme 1 main, bouclier, ou vide
-// Arme 2 mains : main droite uniquement
-```
-
-### Bouclier — réduction supplémentaire si parade réussie
-
-```javascript
-réductionParade = bouclier.tier
-dégâtsFinaux = Math.max(0, dégâtsBruts - réductionArmure - réductionParade)
-```
-
----
-
-## Boucliers
-
-16 tiers. Poids = tier. Réduction flat = tier (si parade réussie).
-
-| Tier | Bouclier |
-|---|---|
-| 1 | Buckler |
-| 2 | Targe |
-| 3 | Pelta Shield |
-| 4 | Quad Shield |
-| 5 | Circle Shield |
-| 6 | Tower Shield |
-| 7 | Spiked Shield |
-| 8 | Round Shield |
-| 9 | Kite Shield |
-| 10 | Casserole Shield |
-| 11 | Heater Shield |
-| 12 | Oval Shield |
-| 13 | Knight Shield |
-| 14 | Hoplite Shield |
-| 15 | Jazeraint Shield |
-| 16 | Dread Shield |
-
----
-
 ## Familles d'ennemis et affinités
 
 ### Les 6 familles
@@ -640,14 +468,16 @@ Vaincre un ennemi → **+2** sur sa famille, **-1** sur les 2 familles suivantes
 - Forge : ⚒️
 - Terrain d'entraînement : 🎯
 
-### Interface de combat
+### Navigation
 
-1. **Écran de préparation** : choix EO/NA/EN par minute + équipement
-2. **Résolution automatique** côté serveur
-3. **Écran de résultat** : journal minute par minute
+Toute case spéciale requiert une confirmation avant d'y entrer :
+- "Êtes-vous sûr de vouloir affronter cette créature ?"
+- "Êtes-vous sûr de vouloir aller au terrain d'entraînement ?"
+- "Êtes-vous sûr de vouloir utiliser la forge ?"
+- "Êtes-vous sûr de vouloir passer à l'étage suivant ?"
 
-**Tags de résultat :**
-- 🔴 Touché — 🟢 Esquivé — 🔵 Paré — ⚫ Raté
+En cas de refus, le joueur reste sur sa case adjacente.
+Navigation dialog : ←/→ pour Oui/Non, Entrée pour valider. Non par défaut.
 
 ---
 

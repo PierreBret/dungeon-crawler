@@ -2,7 +2,10 @@ export const SCREENS = {
   CHARACTER_CREATION: "characterCreation",
   CAMP:               "camp",
   DUNGEON:            "dungeon",
-  TRAINING:           "training"
+  TRAINING:           "training",
+  COMBAT_PREP:        "combatPrep",
+  COMBAT_VIEW:        "combatView",
+  GAME_OVER:          "gameOver"
 };
 
 export const CAMP_OPTIONS = [
@@ -12,8 +15,6 @@ export const CAMP_OPTIONS = [
   { label: "Se reposer",         action: "rest"      },
   { label: "Abandonner",         action: "quit"      }
 ];
-
-// ─── Layout — source de vérité unique ────────────────────────────────────────
 
 export const LAYOUT = {
   leftRatio:  0.20,
