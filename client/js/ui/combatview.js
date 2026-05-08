@@ -26,7 +26,6 @@ const LINE_COLORS = {
   dodge:           THEME.text.secondary,
   parry:           THEME.text.secondary,
   defense_fail:    THEME.text.secondary,
-  damage_raw:      THEME.text.secondary,
   armor:           THEME.text.muted,
   hit:             THEME.text.primary,
   riposte_attempt: THEME.text.muted,

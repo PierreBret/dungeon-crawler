@@ -238,9 +238,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("combat:resolve", (data, callback) => {
-    if (!data.strategy) {
-      console.error("[combat:resolve] strategy manquante");
-      return callback({ ok: false, error: "strategy manquante" });
+    if (!data.tactic && !data.strategy) {
+      console.error("[combat:resolve] tactic manquante");
+      return callback({ ok: false, error: "tactic manquante" });
     }
     if (data.creatureIndex === undefined) {
       console.error("[combat:resolve] creatureIndex manquant");
@@ -272,15 +272,32 @@ io.on("connection", (socket) => {
       // Arme équipée du joueur
       const inventory       = dbGetInventory(session.runId);
       const equippedItem    = inventory.find(i => i.equippedSlot === "rightHand");
-      const playerWeaponDef = equippedItem ? weapons.find(w => w.code === equippedItem.itemCode) : null;
+      const playerWeaponDef = equippedItem
+        ? weapons.find(w => w.code === equippedItem.itemCode)
+        : null;
+
+      // Arme par défaut (mains nues) si aucune arme équipée
+      const defaultWeaponDef = { code: "FIST", typeArme: "Mains nues", dist: 1, weight: 0, damFirst: 3, damLast: 8, models: ["Mains nues"], weightFO: 1, weightTA: 0.5, weightIN: 0, weightVI: 0.5, weightAD: 1 };
+
+      // Normaliser les clés de la tactique joueur (le client envoie eo/na/en en minuscules)
+      const rawTactic = data.tactic ?? data.strategy;
+      const normalizedTactic = Array.isArray(rawTactic)
+        ? rawTactic.map(function normalizeTacticEntry(entry) {
+            return {
+              EO: entry.EO ?? entry.eo ?? 5,
+              NA: entry.NA ?? entry.na ?? 5,
+              EN: entry.EN ?? entry.en ?? 5
+            };
+          })
+        : rawTactic;
 
       const playerData = {
         name:       session.player.name,
         stats:      session.player.stats,
         hp:         playerHp,
-        strategy:   data.strategy,
-        weaponDef:  playerWeaponDef,
-        weaponItem: equippedItem,
+        tactic:     normalizedTactic,
+        weaponDef:  playerWeaponDef ?? defaultWeaponDef,
+        weaponItem: equippedItem ?? { tier: 1, material: 0, affinities: {} },
         equipment:  null  // armures non implémentées
       };
 
@@ -288,12 +305,15 @@ io.on("connection", (socket) => {
         nameFr:    creatureDef.nameFr,
         stats:     creatureDef.stats,
         hp:        creatureHp,
-        weaponDef: creatureWeaponDef,
+        weaponDef: creatureWeaponDef ?? defaultWeaponDef,
+        weaponItem: creatureDef.equipment?.rightHand ?? { tier: 1, material: 0, affinities: {} },
         equipment: creatureDef.equipment,
-        strategy:  creatureDef.strategy
+        tactic:    creatureDef.tactic ?? creatureDef.strategy,
+        family:    creatureDef.family
       };
 
-      const result = resolveCombat(playerData, creatureData);
+      const options = { devMode: DEV_MODE };
+      const result = resolveCombat(playerData, creatureData, options);
 
       // Mettre à jour HP joueur en BDD
       dbUpdateCharacterHpEndurance(session.runId, result.playerHpFinal, character.endurance ?? 0);

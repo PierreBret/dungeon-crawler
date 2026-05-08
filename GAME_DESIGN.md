@@ -249,7 +249,101 @@ pour permettre de calculer le nombre d'augmentations par stat.
 
 ## Système de combat
 
-> La logique complète de résolution du combat (boucle, formules, dégâts) est dans **combat_algorithm.md**.
+> La logique complète de résolution du combat est dans **`.kiro/specs/combat-enrichi/requirements.md`**.
+> `Combat_Algorithm.md` a été supprimé — la spec Kiro fait référence.
+
+### Vue d'ensemble
+
+Combat tick-par-tick, résolution automatique côté serveur. Le joueur définit sa stratégie minute par minute (EO/NA/EN pour les minutes 1 à 5). À partir de la minute 6, la stratégie de la minute 5 est reconduite. Le combat se termine uniquement quand un combattant tombe à 0 PV.
+
+### Paramètres stratégiques (par minute)
+
+| Paramètre | Signification | Plage |
+|-----------|--------------|-------|
+| **EO** (Effort Offensif) | Probabilité d'attaquer plutôt que se repositionner | 1–10 |
+| **NA** (Niveau d'Activité) | Intensité physique — influence l'initiative et les coûts d'endurance | 1–10 |
+| **EN** (Engagement) | Distance souhaitée (1=loin, 10=corps à corps) | 1–10 |
+
+**Distance souhaitée** = `11 - EN`
+
+### Endurance
+
+```
+EndInit = Math.floor((constitution + volonté + 10) × 2)   // plage : 32–104
+Charge  = PoidsArmeDroite + PoidsBouclierOuArmeGauche + PoidsArmures/4
+Portage = force + taille/2
+Surcoût_Endurance = max(0, Charge - Portage) × 10/26      // plage : 0–10
+CoûtNA  = NA_effectif / 2
+
+Coût Attaque        = WeaponWeight + CoûtNA + Surcoût_Endurance
+Coût Esquive        = 5 + CoûtNA + Surcoût_Endurance
+Coût Parade         = 2 + CoûtNA + Surcoût_Endurance
+Coût Repositionnement = 1 + CoûtNA + Surcoût_Endurance
+Gain Récupération   = +1
+```
+
+Le NA est plafonné en début de minute : `NA_effectif = min(NA_stratégie, Endurance/2)`.
+Si l'endurance est insuffisante pour une action, elle est dégradée : Attaque → Repositionnement → Récupération.
+
+### Boucle de combat
+
+```
+Minute = 1, Phase = 1, nbPhaseParMinute = 60, DistanceRéelle = 10
+
+Chaque tick :
+  1. Initiative  : scoreVivacité = NA_effectif + VIT×0.6 + INT×0.4 + d10 + momentum*
+                   (* momentum = 0, placeholder version future)
+                   Égalité → NA le plus élevé ; égalité → tirage au sort
+  2. Action ATT  : D10 <= EO → attaque, sinon repositionnement (dégradé si endurance insuffisante)
+  3. Réaction DEF :
+     - ATT touche → défense (esquive ou parade, automatique, parade prioritaire à égalité)
+     - ATT rate   → tentative de riposte
+     - ATT se repositionne/récupère → DEF attaque (si D10 <= EO_DEF) ou se repositionne ou récupère
+  4. Dégâts si touche
+  5. Phase += weightWeapon (attaque) | 2 (repositionnement) | 1 (récupération)
+  6. Si Phase >= 60 → minute suivante
+```
+
+### Formules clés
+
+```javascript
+// Initiative
+scoreVivacité = Math.floor(NA_effectif + VIT×0.6 + INT×0.4 + d10 + momentum)
+
+// Attaque
+BaseAttack    = Math.floor((ADR×0.5 + VIT×0.3 + INT×0.2) × 4)
+modEN         = Math.floor(Math.abs(DistanceRéelle - WeaponEN) × 2)
+AttackQuality = BaseAttack - modEN - D100   // touche si > 0
+
+// Riposte
+BaseRiposte    = Math.floor((INT + ADR×0.5 + VIT×0.5) / 2)
+RiposteScore   = BaseRiposte + ModNA - DistanceRéelle   // ModNA = NA_effectif - 5
+DistanceRiposte = Math.max(1, DistanceRéelle - 2)
+
+// Défense
+BaseDodge  = VIT×2 + ADR - TAI
+DodgeScore = BaseDodge + (5-EO) + (NA_effectif-5) + (5-EN)
+BaseParry  = ADR + FOR + VOL
+ParryScore = BaseParry + (5-EO) + (5-NA_effectif) + (EN-5)
+// Esquive : Phase+=2, DodgeQuality = DodgeScore - D100, réussit si >= 0
+// Parade  : Phase+=1, ParryQuality = ParryScore - D100, réussit si >= 0
+
+// Dégâts
+TotalDamage  = Math.floor(baseArme × modMatériau × coefStats × modAffinité × modTypeDégâts)
+baseArme     = damFirst + (damLast - damFirst) × (tier-1) / (nbTiers-1)
+modAffinité  = affinité arme vs famille ennemi / 100   // plage : 0–2
+modTypeDégâts = selon type dégâts arme vs armure/défense  // plage : 0.8–1.2
+dégâtsFinaux = Math.max(0, TotalDamage - réductionArmure)  // armures = 0 en v1
+```
+
+### Momentum *(placeholder — version future)*
+
+```
+Touche infligée      : +2
+Attaque parée        : −1 (attaquant)
+Attaque esquivée     : −1 (attaquant)
+Plage                : [−10, +10]
+```
 
 ---
 
@@ -291,26 +385,26 @@ if (arme.mains === 2) mainGauche = null
 
 ### Table des armes
 
-| Code | Type d'arme | Dam first | Dam last | nb tiers | Mains | Type dégâts | poids FOR | poids TAI | poids INT | poids VIT | poids ADR | Portée optimale (EN) |
+| Code | Type d'arme | Dam first | Dam last | nb tiers | Mains | Type dégâts | poids FOR | poids TAI | poids INT | poids VIT | poids ADR | Dist idéale |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| DA | Dague | 10 | 42 | 7 | 1 | Piercing | 0.6 | 0.0 | 0.3 | 0.7 | 1.4 | 9 |
-| SH | Epée courte | 11 | 44 | 7 | 1 | Piercing | 0.7 | 0.1 | 0.3 | 0.7 | 1.2 | 7 |
-| SA | Sabre | 13 | 54 | 7 | 1 | Edged | 0.7 | 0.2 | 0.2 | 1.1 | 0.8 | 7 |
-| EP | Rapière | 12 | 59 | 4 | 1 | Piercing | 0.4 | 0.0 | 0.6 | 0.8 | 1.2 | 6 |
-| LO | Epée longue | 12 | 56 | 6 | 1 | Edged | 0.9 | 0.3 | 0.3 | 0.7 | 0.8 | 6 |
-| BS | Epée large | 13 | 54 | 5 | 1 | Impact | 1.3 | 0.6 | 0.1 | 0.4 | 0.6 | 5 |
-| GS | Epée à 2 mains | 21 | 79 | 5 | 2 | Impact | 1.2 | 0.8 | 0.2 | 0.4 | 0.4 | 5 |
-| HA | Hachette | 10 | 41 | 4 | 1 | Impact | 1.2 | 0.4 | 0.2 | 0.6 | 0.6 | 6 |
-| BA | Hache de bataille | 13 | 56 | 5 | 1 | Edged | 1.2 | 0.7 | 0.1 | 0.3 | 0.7 | 5 |
-| GA | Hache à 2 mains | 21 | 80 | 4 | 2 | Edged | 1.2 | 0.8 | 0.1 | 0.2 | 0.7 | 4 |
-| MA | Masse | 11 | 47 | 7 | 1 | Blunt | 1.3 | 0.5 | 0.1 | 0.2 | 0.9 | 5 |
-| FL | Fléau | 12 | 60 | 5 | 1 | Blunt | 0.9 | 0.4 | 0.8 | 0.3 | 0.6 | 6 |
-| WH | Marteau de guerre | 24 | 84 | 5 | 2 | Blunt | 1.3 | 0.7 | 0.1 | 0.1 | 0.8 | 4 |
-| SS | Lance courte | 12 | 51 | 6 | 1 | Piercing | 0.6 | 0.4 | 0.4 | 0.7 | 0.9 | 5 |
-| LS | Lance à 2 mains | 22 | 79 | 8 | 2 | Piercing | 0.6 | 0.7 | 0.3 | 0.5 | 0.9 | 3 |
-| PA | Arme d'hast | 23 | 87 | 7 | 2 | Impact | 1.0 | 0.9 | 0.3 | 0.4 | 0.4 | 3 |
-| QS | Baton de combat | 19 | 71 | 6 | 2 | Blunt | 0.7 | 0.7 | 0.4 | 0.6 | 0.6 | 4 |
-| SC | Faux | 23 | 84 | 6 | 2 | Edged | 0.8 | 0.9 | 0.4 | 0.4 | 0.5 | 4 |
+| DA | Dague | 10 | 42 | 7 | 1 | Piercing | 0.6 | 0.0 | 0.3 | 0.7 | 1.4 | 1 |
+| SH | Epée courte | 11 | 44 | 7 | 1 | Piercing | 0.7 | 0.1 | 0.3 | 0.7 | 1.2 | 3 |
+| SA | Sabre | 13 | 54 | 7 | 1 | Edged | 0.7 | 0.2 | 0.2 | 1.1 | 0.8 | 4 |
+| EP | Rapière | 12 | 59 | 4 | 1 | Piercing | 0.4 | 0.0 | 0.6 | 0.8 | 1.2 | 7 |
+| LO | Epée longue | 12 | 56 | 6 | 1 | Edged | 0.9 | 0.3 | 0.3 | 0.7 | 0.8 | 5 |
+| BS | Epée large | 13 | 54 | 5 | 1 | Impact | 1.3 | 0.6 | 0.1 | 0.4 | 0.6 | 4 |
+| GS | Epée à 2 mains | 21 | 79 | 5 | 2 | Impact | 1.2 | 0.8 | 0.2 | 0.4 | 0.4 | 6 |
+| HA | Hachette | 10 | 41 | 4 | 1 | Impact | 1.2 | 0.4 | 0.2 | 0.6 | 0.6 | 3 |
+| BA | Hache de bataille | 13 | 56 | 5 | 1 | Edged | 1.2 | 0.7 | 0.1 | 0.3 | 0.7 | 4 |
+| GA | Hache à 2 mains | 21 | 80 | 4 | 2 | Edged | 1.2 | 0.8 | 0.1 | 0.2 | 0.7 | 6 |
+| MA | Masse | 11 | 47 | 7 | 1 | Blunt | 1.3 | 0.5 | 0.1 | 0.2 | 0.9 | 4 |
+| FL | Fléau | 12 | 60 | 5 | 1 | Blunt | 0.9 | 0.4 | 0.8 | 0.3 | 0.6 | 5 |
+| WH | Marteau de guerre | 24 | 84 | 5 | 2 | Blunt | 1.3 | 0.7 | 0.1 | 0.1 | 0.8 | 3 |
+| SS | Lance courte | 12 | 51 | 6 | 1 | Piercing | 0.6 | 0.4 | 0.4 | 0.7 | 0.9 | 6 |
+| LS | Lance à 2 mains | 22 | 79 | 8 | 2 | Piercing | 0.6 | 0.7 | 0.3 | 0.5 | 0.9 | 10 |
+| PA | Arme d'hast | 23 | 87 | 7 | 2 | Impact | 1.0 | 0.9 | 0.3 | 0.4 | 0.4 | 9 |
+| QS | Baton de combat | 19 | 71 | 6 | 2 | Blunt | 0.7 | 0.7 | 0.4 | 0.6 | 0.6 | 7 |
+| SC | Faux | 23 | 84 | 6 | 2 | Edged | 0.8 | 0.9 | 0.4 | 0.4 | 0.5 | 9 |
 
 ### nb tiers
 Le nombre de tiers est déduit du nombre de modèles dans `weapons.json`.
