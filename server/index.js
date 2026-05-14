@@ -218,7 +218,7 @@ io.on("connection", (socket) => {
       const character     = dbGetCharacter(session.runId);
       const augmentations = JSON.parse(character.augmentations ?? "{}");
       const nbAug         = augmentations[data.stat] ?? 0;
-      const chance        = Math.min((character.volonte * 5) / (1 + nbAug), 95);
+      const chance        = Math.floor(Math.min((character.volonte * 5) / (1 + nbAug), 95));
       const roll          = rollDie(1, 100);
       const success       = roll <= chance;
 
@@ -230,7 +230,7 @@ io.on("connection", (socket) => {
         session.augmentations = augmentations;
       }
 
-      callback({ ok: true, success, chance: Math.floor(chance), roll: Math.floor(roll) });
+      callback({ ok: true, success, chance, roll });
     } catch (err) {
       console.error("[training:attempt] Erreur :", err.message);
       callback({ ok: false, error: err.message });

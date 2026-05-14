@@ -2,1230 +2,1588 @@
   SERVER/GAME/COMBAT.JS
   Résolveur de combat — côté serveur uniquement.
 
-  Chaque action produit un tableau de lignes de log détaillées.
-  Le client affiche ligne par ligne sur Entrée.
-  Les lignes de fin (victoire/défaite/loot) font partie du log.
+  Moteur de combat refactorisé : architecture modulaire avec fonctions pures,
+  configuration externalisée, et phases isolées.
+
+  Point d'entrée : resolveCombat(playerData, creatureData, rng?)
 */
 
-// ─── Scores dérivés ───────────────────────────────────────────────────────────
+import { COMBAT } from "./combatConfig.js";
+import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 
-export function computeScores(stats) {
-  const vol = stats.volonté ?? stats.volonte ?? 0;
-  return {
-    enduranceInit: Math.floor((stats.constitution + vol + 10) * 2),
-    BaseAttack:    Math.floor((stats.adresse * 0.5 + stats.vitesse * 0.3 + stats.intelligence * 0.2) * 4),
-    BaseDodge:     stats.vitesse * 2 + stats.adresse - stats.taille,
-    BaseParry:     stats.adresse + stats.force + vol,
-    BaseRiposte:   Math.floor((stats.intelligence + stats.adresse * 0.5 + stats.vitesse * 0.5) / 2),
-    init:          stats.vitesse * 0.6 + stats.intelligence * 0.4
-  };
-}
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// ─── Modificateurs tactiques ──────────────────────────────────────────────────
+// presentation.json doit être chargé en mémoire avant tout appel à Presentation()
+const presentation = JSON.parse(
+  readFileSync(join(__dirname, "../data/presentation.json"), "utf8")
+);
+
+// ─── Normalisation en pourcentage ──────────────────────────────────────────────
 
 /**
- * Calcule les modificateurs tactiques additifs pour les scores de défense.
- * - dodgeMod : (5 - EO) + (NA_effectif - 5) + (5 - EN)   (Req 10.2)
- * - parryMod : (5 - EO) + (5 - NA_effectif) + (EN - 5)   (Req 10.4)
+ * Transforme une compétence brute en pourcentage normalisé.
+ * Formule : floor(skill × multiplicateur / diviseur), plafonné dans [percentMin, percentMax].
  *
- * @param {number} eo - Effort Offensif (1–10)
- * @param {number} naEffectif - NA effectif (plafonné par endurance)
- * @param {number} en - Engagement (1–10)
- * @returns {{ dodgeMod: number, parryMod: number }}
- */
-export function computeTacticMods(eo, naEffectif, en) {
-  return {
-    dodgeMod: (5 - eo) + (naEffectif - 5) + (5 - en),
-    parryMod: (5 - eo) + (5 - naEffectif) + (en - 5)
-  };
-}
-
-// ─── Charge, Portage et Surcoût d'Endurance ───────────────────────────────────
-
-/**
- * Calcule la Charge totale d'un combattant.
- * Charge = Math.floor(PoidsArmeDroite + PoidsBouclier + Math.floor(PoidsArmures / 4))
- * - WeaponWeight = 0 si absent (Req 2.5)
- * - PoidsArmures = 0 car armures non implémentées (Req 2.4)
- */
-export function computeCharge(weaponDef, equipment) {
-  const poidsArmeDroite = weaponDef?.weight ?? 0;
-  const poidsBouclier = equipment?.leftHand?.weight ?? 0;
-  const poidsArmures = 0; // armures non implémentées (Req 2.4)
-  return Math.floor(poidsArmeDroite + poidsBouclier + Math.floor(poidsArmures / 4));
-}
-
-/**
- * Calcule la capacité de portage d'un combattant.
- * Portage = Math.floor(force + Math.floor(taille / 2))
- */
-export function computePortage(stats) {
-  return Math.floor(stats.force + Math.floor(stats.taille / 2));
-}
-
-/**
- * Calcule le surcoût d'endurance lié à la surcharge.
- * Surcoût = Math.floor(Math.max(0, Charge - Portage) × 10 / 26)
- */
-export function computeSurcoutEndurance(charge, portage) {
-  return Math.floor(Math.max(0, charge - portage) * 10 / 26);
-}
-
-// ─── Clamping d'endurance ──────────────────────────────────────────────────────
-
-/**
- * Contraint l'endurance dans la plage [0, EndInit] après toute modification.
- * endurance = Math.max(0, Math.min(endInit, endurance))
- * Req 3.7 : l'endurance ne peut jamais sortir de [0, EndInit].
- */
-export function clampEndurance(endurance, endInit) {
-  return Math.max(0, Math.min(endInit, endurance));
-}
-
-// ─── Sélection tactique par minute ────────────────────────────────────────────
-
-/**
- * Retourne les paramètres tactiques (EO, NA, EN) pour une minute donnée.
- * - Joueur (isCreature = false) : tactic est un tableau de 5 éléments, index m-1
- * - Créature (isCreature = true) : tactic est un objet { min1, min2, ..., min5 }
- * - Si m > 5, utilise les paramètres de la minute 5.
+ * @param {number} rawSkill - Compétence brute
+ * @param {number} multiplier - Multiplicateur spécifique à la compétence (config.normalization)
+ * @param {number} divisor - Diviseur spécifique à la compétence
+ * @param {object} config - Configuration (pour percentMin/percentMax)
+ * @returns {number} Pourcentage entier dans [percentMin, percentMax]
  *
- * @param {Array|Object} tactic - Tactique du combattant
- * @param {number} minute - Minute courante (1+)
- * @param {boolean} isCreature - true si créature, false si joueur
- * @returns {{ EO: number, NA: number, EN: number }}
+ * Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
  */
-export function getTacticForMinute(tactic, minute, isCreature) {
-  const effectiveMinute = minute > 5 ? 5 : minute;
-  if (isCreature) {
-    return tactic[`min${effectiveMinute}`];
-  }
-  return tactic[effectiveMinute - 1];
+export function normalizeToPercent(rawSkill, multiplier, divisor, config) {
+  const raw = Math.floor(rawSkill * multiplier / divisor);
+  return Math.max(config.percentMin, Math.min(config.percentMax, raw));
 }
 
-// ─── Calcul du NA effectif en début de minute ─────────────────────────────────
+// ─── Compétences dérivées ─────────────────────────────────────────────────────
 
 /**
- * Calcule le NA effectif d'un combattant en début de minute.
- * NA_effectif = Math.min(NA_tactique, Math.floor(Endurance / 2))
- * Si endurance <= 0, NA_effectif = 0.
- * Cette valeur est fixée une seule fois en début de minute (pas de recalcul en cours de minute).
- */
-export function computeNaEffectif(naTactique, endurance) {
-  if (endurance <= 0) return 0;
-  return Math.min(naTactique, Math.floor(endurance / 2));
-}
-
-// ─── Vivacité et Initiative ────────────────────────────────────────────────────
-
-/**
- * Calcule le scoreVivacité d'un combattant pour un tick.
- * scoreVivacité = Math.floor(NA_effectif + vitesse × 0.6 + intelligence × 0.4 + d10 + momentum)
+ * Calcule les 6 compétences dérivées à partir des statistiques primaires
+ * et des coefficients définis dans la configuration.
  *
- * @param {number} naEffectif - NA effectif du combattant (plafonné par endurance en début de minute)
- * @param {{ vitesse: number, intelligence: number }} stats - Statistiques du combattant
- * @param {number} momentum - Bonus/malus de momentum (0 dans cette version)
- * @param {number} d10 - Jet de dé d10 [1, 10], unique par combattant par tick
- * @returns {number} scoreVivacité (entier)
- */
-export function computeVivacite(naEffectif, stats, momentum, d10) {
-  return Math.floor(naEffectif + stats.vitesse * 0.6 + stats.intelligence * 0.4 + d10 + momentum);
-}
-
-/**
- * Détermine quel combattant est ATT (a l'initiative) pour ce tick.
- * - Le combattant avec le scoreVivacité le plus élevé est ATT.
- * - En cas d'égalité : le combattant avec le NA_effectif le plus élevé gagne.
- * - En cas de double égalité : tirage 50/50 via tieBreaker.
+ * Pour chaque compétence, la formule est :
+ *   Σ(stat × coefficient) pour chaque stat référencée dans config.skills[compétence]
  *
- * @param {number} vivaciteA - scoreVivacité du combattant A
- * @param {number} vivaciteB - scoreVivacité du combattant B
- * @param {number} naEffectifA - NA_effectif du combattant A
- * @param {number} naEffectifB - NA_effectif du combattant B
- * @param {boolean} tieBreaker - true = A gagne le tirage 50/50, false = B gagne
- * @returns {"A" | "B"} Identifiant du combattant désigné ATT
- */
-export function determineInitiative(vivaciteA, vivaciteB, naEffectifA, naEffectifB, tieBreaker) {
-  if (vivaciteA > vivaciteB) return "A";
-  if (vivaciteB > vivaciteA) return "B";
-  // Égalité de vivacité : NA_effectif le plus élevé gagne
-  if (naEffectifA > naEffectifB) return "A";
-  if (naEffectifB > naEffectifA) return "B";
-  // Double égalité : tirage 50/50
-  return tieBreaker ? "A" : "B";
-}
-
-// ─── Choix d'action d'ATT avec dégradation ────────────────────────────────────
-
-/**
- * Détermine l'action d'ATT selon son EO et son endurance, avec chaîne de dégradation.
- * - Si d10EO <= eo → intention = "attaque"
- * - Si d10EO > eo  → intention = "repositionnement"
- * - Dégradation : Attaque → Repositionnement → Récupération (si endurance insuffisante)
- * - L'endurance est vérifiée AVANT de déduire le coût (Req 6.5).
+ * Cas spécial : TAI_INV utilise (24 - TAI) au lieu de TAI directement.
  *
- * @param {number} eo - Effort Offensif du combattant (1–10)
- * @param {number} endurance - Endurance courante du combattant
- * @param {number} coutAttaque - Coût en endurance d'une attaque
- * @param {number} coutRepo - Coût en endurance d'un repositionnement
- * @param {number} d10EO - Jet de dé D10 [1, 10] dédié au choix d'action
- * @param {number} distanceReelle - Distance réelle courante
- * @param {number} en - Engagement du combattant (pour calculer distance souhaitée)
- * @returns {{ action: "attaque"|"repositionnement"|"recuperation", fatigueMessage: string|null }}
+ * @param {{ FOR: number, CON: number, TAI: number, INT: number, VOL: number, VIT: number, ADR: number }} stats
+ * @param {object} config - Objet COMBAT contenant config.skills avec les coefficients
+ * @returns {{ vivacite: number, initiative: number, attaque: number, parade: number, esquive: number, riposte: number }}
+ *
+ * Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7
  */
-export function chooseAction(eo, endurance, coutAttaque, coutRepo, d10EO, distanceReelle, en) {
-  const distanceSouhaitee = 11 - en;
+export function computeDerivedSkills(stats, config) {
+  const skillNames = ['vivacite', 'initiative', 'attaque', 'parade', 'esquive', 'riposte'];
+  const result = {};
 
-  if (d10EO <= eo) {
-    // Intention : attaquer
-    if (endurance >= coutAttaque) {
-      return { action: "attaque", fatigueMessage: null };
+  for (const skillName of skillNames) {
+    const coefficients = config.skills[skillName];
+    let total = 0;
+
+    for (const [key, coef] of Object.entries(coefficients)) {
+      if (key === 'TAI_INV') {
+        total += (24 - stats.TAI) * coef;
+      } else {
+        total += stats[key] * coef;
+      }
     }
-    // Trop fatigué pour attaquer → tombe dans la branche repositionnement/récup
-    return chooseNonAttackAction(endurance, coutRepo, distanceReelle, distanceSouhaitee, "trop fatigué pour attaquer");
+
+    result[skillName] = total;
   }
 
-  // Intention : ne pas attaquer
-  return chooseNonAttackAction(endurance, coutRepo, distanceReelle, distanceSouhaitee, null);
+  return result;
 }
 
-/**
- * Logique de choix quand ATT n'attaque pas (ou ne peut pas).
- */
-function chooseNonAttackAction(endurance, coutRepo, distanceReelle, distanceSouhaitee, fatigueMessage) {
-  if (distanceReelle !== distanceSouhaitee) {
-    if (endurance >= coutRepo) {
-      return { action: "repositionnement", fatigueMessage };
-    }
-    // Trop fatigué pour se repositionner aussi
-    return { action: "recuperation", fatigueMessage: fatigueMessage ?? "trop fatigué pour se repositionner" };
-  }
-  // Déjà à la bonne distance → récupération
-  return { action: "recuperation", fatigueMessage };
-}
-
-// ─── Résolution de l'Attaque ──────────────────────────────────────────────────
+// ─── Ajustements tactiques — compétences effectives ───────────────────────────
 
 /**
- * Résout une attaque et retourne le résultat.
- * @param {{ adresse: number, vitesse: number, intelligence: number }} attackerStats
- * @param {{ dist: number, weight: number }} weaponDef - Définition de l'arme (dist = WeaponEN)
- * @param {number} distanceReelle - Distance courante entre combattants (1-10)
- * @param {number} d100 - Jet de dé D100 [1, 100]
- * @returns {{ hit: boolean, attackScore: number, attackQuality: number, baseAttack: number, modEN: number, phaseIncrement: number }}
- */
-export function resolveAttack(attackerStats, weaponDef, distanceReelle, d100) {
-  if (weaponDef == null || !("dist" in weaponDef)) {
-    throw new Error("resolveCombat: champ 'dist' manquant dans weaponDef");
-  }
-  const baseAttack = Math.floor((attackerStats.adresse * 0.5 + attackerStats.vitesse * 0.3 + attackerStats.intelligence * 0.2) * 4);
-  const modEN = Math.floor(Math.abs(distanceReelle - weaponDef.dist) * 2);
-  const attackScore = baseAttack - modEN;
-  const attackQuality = attackScore - d100;
-  return {
-    hit: attackQuality >= 0,
-    attackScore,
-    attackQuality,
-    baseAttack,
-    modEN,
-    phaseIncrement: weaponDef.weight ?? 0
-  };
-}
-
-// ─── Résolution du Repositionnement ───────────────────────────────────────────
-
-/**
- * Résout un repositionnement.
- * Nouvelle formule : ±2 si écart >= 2, ±1 si écart == 1, 0 si déjà à distance.
- * @param {number} distanceReelle - Distance réelle actuelle (1-10)
- * @param {number} en - Engagement du combattant (1-10)
- * @returns {{ newDistance: number, phaseIncrement: number }}
- */
-export function resolveReposition(distanceReelle, en) {
-  const distCible = 11 - en;
-  let newDistance = distanceReelle;
-
-  if (distCible + 2 <= distanceReelle) {
-    newDistance = distanceReelle - 2;
-  } else if (distCible - 2 >= distanceReelle) {
-    newDistance = distanceReelle + 2;
-  } else if (distCible > distanceReelle) {
-    newDistance = distanceReelle + 1;
-  } else if (distCible < distanceReelle) {
-    newDistance = distanceReelle - 1;
-  }
-
-  newDistance = Math.max(1, Math.min(10, newDistance));
-  return { newDistance, phaseIncrement: 2 };
-}
-
-// ─── Résolution de la Récupération ────────────────────────────────────────────
-
-/**
- * Résout une récupération.
- * @param {number} endurance - Endurance actuelle du combattant
- * @param {number} endInit - Endurance initiale (plafond)
- * @returns {{ newEndurance: number, phaseIncrement: number }}
- */
-export function resolveRecovery(endurance, endInit) {
-  const newEndurance = clampEndurance(endurance + 1, endInit);
-  return { newEndurance, phaseIncrement: 1 };
-}
-
-// ─── Choix et résolution de la défense ─────────────────────────────────────────
-
-/**
- * Choisit et résout la défense de DEF quand ATT a touché.
+ * Calcule les compétences effectives après ajustements tactiques.
  *
- * @param {{ vitesse: number, adresse: number, taille: number, force: number, volonté?: number, volonte?: number }} defenderStats
- * @param {number} eo - EO du défenseur (1-10)
- * @param {number} naEffectif - NA_effectif du défenseur
- * @param {number} en - EN du défenseur (1-10)
- * @param {number} endurance - Endurance courante du défenseur
- * @param {number} coutEsquive - Coût d'esquive: Math.floor(5 + CoûtNA + Surcoût)
- * @param {number} coutParade - Coût de parade: Math.floor(2 + CoûtNA + Surcoût)
- * @param {number} d100 - Jet de dé D100 [1, 100] pour résoudre la défense
- * @returns {{
- *   defenseType: "esquive"|"parade"|"encaisse",
- *   success: boolean,
- *   dodgeScore: number,
- *   parryScore: number,
- *   defenseQuality: number,
- *   phaseIncrement: number,
- *   enduranceCost: number,
- *   degraded: boolean
- * }}
+ * Formules :
+ * - Vivacité_eff = Vivacité% + (EO-5)×2 + (NA-5)
+ * - Initiative_eff = Initiative% + (EO-5) + (NA-5) + (EN-5)
+ * - Attaque_eff = Attaque% + (EO-5) + (5-|DistanceArme - Distance|)×2
+ * - Esquive_eff = Esquive% + (5-EO) + (NA-5) + (5-EN)
+ * - Parade_eff = Parade% + (5-EO) + (5-NA) + (5-EN)
+ * - Riposte_eff = Riposte% + (5-EO) + (5-NA) + (EN-5)×2
+ *
+ * Chaque résultat est borné dans [config.effectiveMin, config.effectiveMax] = [1, 99].
+ *
+ * @param {object} percentages - {vivacite, initiative, attaque, parade, esquive, riposte} in [12.5, 87.5]
+ * @param {object} tactics - {EO, NA, EN} values [1, 10]
+ * @param {number} distance - Current distance [1, 10]
+ * @param {number} weaponDist - Weapon optimal distance [1, 10]
+ * @param {object} config - COMBAT config
+ * @returns {object} {vivacite, initiative, attaque, parade, esquive, riposte} in [1, 99]
+ *
+ * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8
  */
-export function chooseDefense(defenderStats, eo, naEffectif, en, endurance, coutEsquive, coutParade, d100) {
-  const vol = defenderStats.volonté ?? defenderStats.volonte ?? 0;
+export function computeEffectiveSkills(percentages, tactics, distance, weaponDist, config) {
+  const { EO, NA, EN } = tactics;
+  const neutral = config.tacticNeutral;
 
-  // 1. Compute base scores
-  const baseDodge = defenderStats.vitesse * 2 + defenderStats.adresse - defenderStats.taille;
-  const baseParry = defenderStats.adresse + defenderStats.force + vol;
+  const clamp = (value) => Math.max(config.effectiveMin, Math.min(config.effectiveMax, Math.floor(value)));
 
-  // 2. Compute full scores with tactic modifiers
-  const dodgeScore = baseDodge + (5 - eo) + (naEffectif - 5) + (5 - en);
-  const parryScore = baseParry + (5 - eo) + (5 - naEffectif) + (en - 5);
+  const vivacite = clamp(percentages.vivacite + (EO - neutral) * 2 + (NA - neutral));
+  const initiative = clamp(percentages.initiative + (EO - neutral) + (NA - neutral) + (EN - neutral));
+  const attaque = clamp(percentages.attaque + (EO - neutral) + (neutral - Math.abs(weaponDist - distance)) * 2);
+  const esquive = clamp(percentages.esquive + (neutral - EO) + (NA - neutral) + (neutral - EN));
+  const parade = clamp(percentages.parade + (neutral - EO) + (neutral - NA) + (neutral - EN));
+  const riposte = clamp(percentages.riposte + (neutral - EO) + (neutral - NA) + (EN - neutral) * 2);
 
-  // 3. Choose preferred defense: parade wins ties
-  let preferred = dodgeScore > parryScore ? "esquive" : "parade";
-  let degraded = false;
+  return { vivacite, initiative, attaque, esquive, parade, riposte };
+}
 
-  // 4. Degradation: Esquive → Parade → Encaisse
-  if (preferred === "esquive" && endurance < coutEsquive) {
-    preferred = "parade";
-    degraded = true;
-  }
-  if (preferred === "parade" && endurance < coutParade) {
-    preferred = "encaisse";
-    degraded = true;
-  }
+// ─── Système de jets de dés ────────────────────────────────────────────────────
 
-  // 5. Resolution
-  let success;
-  let phaseIncrement;
-  let enduranceCost;
-  let defenseQuality;
+/**
+ * Effectue un jet de compétence uniforme.
+ * Formule : quality = effectiveSkill - D100 - fatigue
+ * Le jet est réussi si quality >= 0.
+ *
+ * @param {number} effectiveSkill - Compétence effective [1, 99]
+ * @param {number} fatigue - Malus de fatigue {0, 5, 10, 15, 20}
+ * @param {Function} rng - Générateur aléatoire (returns [0, 1))
+ * @returns {{quality: number, d100: number, success: boolean}}
+ *
+ * Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8
+ */
+export function rollSkill(effectiveSkill, fatigue, rng) {
+  const d100 = Math.floor(rng() * 100) + 1;
+  const quality = effectiveSkill - d100 - fatigue;
+  return { quality, d100, success: quality >= 0 };
+}
 
-  if (preferred === "esquive") {
-    defenseQuality = dodgeScore - d100;
-    success = defenseQuality >= 0;
-    phaseIncrement = 2;
-    enduranceCost = coutEsquive;
-  } else if (preferred === "parade") {
-    defenseQuality = parryScore - d100;
-    success = defenseQuality >= 0;
-    phaseIncrement = 1;
-    enduranceCost = coutParade;
+/**
+ * Log — pousse une entrée de log (toujours visible).
+ */
+function log(state, type, text) {
+  if (state.logBuffer.length > 0) {
+    const combined = [...state.logBuffer.map(e => e.text), text].join('\n');
+    state.logBuffer = [];
+    state.log.push({ type, text: combined });
   } else {
-    // encaisse
-    defenseQuality = 0;
-    success = false;
-    phaseIncrement = 0;
-    enduranceCost = 0;
+    state.log.push({ type, text });
   }
-
-  return {
-    defenseType: preferred,
-    success,
-    dodgeScore,
-    parryScore,
-    defenseQuality,
-    phaseIncrement,
-    enduranceCost,
-    degraded
-  };
 }
 
-// ─── Résolution de la Riposte (ATT a raté) ────────────────────────────────────
+function addLog(state, type, text) {
+  state.logBuffer.push({ type, text });
+}
 
 /**
- * Résout une tentative de riposte quand ATT a raté son attaque.
- *
- * @param {{ intelligence: number, adresse: number, vitesse: number }} defenderStats
- * @param {number} naEffectif - NA_effectif du défenseur
- * @param {number} distanceReelle - Distance courante (1-10)
- * @param {number} endurance - Endurance courante du défenseur
- * @param {number} coutAttaque - Coût d'attaque du défenseur (Math.floor(WeaponWeight_DEF + CoûtNA + Surcoût))
- * @param {{ dist: number, weight: number }} weaponDef - Arme du défenseur
- * @param {number} d100Riposte - Jet D100 pour la tentative de riposte
- * @param {number} d100Attack - Jet D100 pour l'attaque de riposte (si autorisée)
- * @returns {{
- *   riposteAttempted: boolean,
- *   riposteAuthorized: boolean,
- *   riposteHit: boolean,
- *   riposteScore: number,
- *   riposteQuality: number,
- *   baseRiposte: number,
- *   distanceRiposte: number,
- *   attackResult: object|null,
- *   phaseIncrement: number,
- *   enduranceCost: number
- * }}
+ * LogDev — pousse une entrée de log uniquement si devMode est actif.
  */
-export function resolveRiposte(defenderStats, naEffectif, distanceReelle, endurance, coutAttaque, weaponDef, d100Riposte, d100Attack) {
-  // 1. BaseRiposte = Math.floor((intelligence + adresse × 0.5 + vitesse × 0.5) / 2)
-  const baseRiposte = Math.floor((defenderStats.intelligence + defenderStats.adresse * 0.5 + defenderStats.vitesse * 0.5) / 2);
-
-  // 2. RiposteScore = BaseRiposte + (naEffectif - 5) - distanceReelle
-  const riposteScore = baseRiposte + (naEffectif - 5) - distanceReelle;
-
-  // 3. RiposteQuality = RiposteScore - d100Riposte
-  const riposteQuality = riposteScore - d100Riposte;
-
-  // 4. riposteAttempted = true (always attempted when ATT misses)
-  const riposteAttempted = true;
-
-  // 5. If RiposteQuality >= 0 → riposte authorized (if endurance sufficient)
-  if (riposteQuality >= 0) {
-    // Check endurance
-    if (endurance < coutAttaque) {
-      // Endurance insuffisante → riposte annulée
-      return {
-        riposteAttempted,
-        riposteAuthorized: false,
-        riposteHit: false,
-        riposteScore,
-        riposteQuality,
-        baseRiposte,
-        distanceRiposte: 0,
-        attackResult: null,
-        phaseIncrement: 0,
-        enduranceCost: 0
-      };
-    }
-
-    // Riposte autorisée
-    // DistanceRiposte = Math.max(1, DistanceRéelle - 2)
-    const distanceRiposte = Math.max(1, distanceReelle - 2);
-
-    // Résoudre l'attaque de riposte avec les formules standard à DistanceRiposte
-    const attackResult = resolveAttack(defenderStats, weaponDef, distanceRiposte, d100Attack);
-
-    // phaseIncrement = weaponDef.weight ?? 0
-    const phaseIncrement = weaponDef.weight ?? 0;
-
-    return {
-      riposteAttempted,
-      riposteAuthorized: true,
-      riposteHit: attackResult.hit,
-      riposteScore,
-      riposteQuality,
-      baseRiposte,
-      distanceRiposte,
-      attackResult,
-      phaseIncrement,
-      enduranceCost: coutAttaque
-    };
+function logDev(state, type, text) {
+  if (state.devMode) {
+    log(state, type, text);
   }
-
-  // 6. If RiposteQuality < 0 → riposte fails
-  return {
-    riposteAttempted,
-    riposteAuthorized: false,
-    riposteHit: false,
-    riposteScore,
-    riposteQuality,
-    baseRiposte,
-    distanceRiposte: 0,
-    attackResult: null,
-    phaseIncrement: 0,
-    enduranceCost: 0
-  };
 }
 
-// ─── Réaction de DEF quand ATT ne l'attaque pas ───────────────────────────────
-
 /**
- * Gère la réaction de DEF quand ATT ne l'attaque pas (repositionnement ou récupération d'ATT).
+ * TestEndurance — Vérifie l'endurance d'un combattant et applique fatigue + NA cap.
  *
- * @param {{ vitesse: number, intelligence: number, adresse: number, force: number, taille: number, volonté: number }} defenderStats
- * @param {number} eoDefender - EO du défenseur (1-10)
- * @param {number} enDefender - EN du défenseur (1-10)
- * @param {number} endurance - Endurance courante du défenseur
- * @param {number} coutAttaque - Coût d'attaque du défenseur
- * @param {number} coutRepo - Coût de repositionnement du défenseur
- * @param {number} distanceReelle - Distance courante (1-10)
- * @param {{ dist: number, weight: number }} weaponDef - Arme du défenseur
- * @param {number} d10EO - Jet D10 pour déterminer l'intention [1, 10]
- * @param {number} d100Repo - Jet D100 pour la tentative de repositionnement [1, 100]
- * @returns {{
- *   action: "attaque"|"repositionnement"|"recuperation",
- *   attackIntended: boolean,
- *   repoAttempted: boolean,
- *   repoSuccess: boolean,
- *   scoreRepo: number,
- *   newDistance: number|null,
- *   phaseIncrement: number,
- *   enduranceCost: number,
- *   degraded: boolean
- * }}
+ * Conforme au pseudo-code : utilise les seuils configurables seuilEndurance1-4.
+ * Le premier palier (END <= seuilEndurance4) utilise AleatoireParmi pour le log NA.
  */
-export function resolveDefenderReaction(defenderStats, eoDefender, enDefender, endurance, coutAttaque, coutRepo, distanceReelle, weaponDef, d10EO, d100Repo) {
-  // 1. Déterminer l'intention de DEF
-  const attackIntended = (d10EO <= eoDefender);
+function testEndurance(combatant, state, rng) {
+  const name = combatant.name;
 
-  // 2. Si DEF veut attaquer
-  if (attackIntended) {
-    if (endurance >= coutAttaque) {
-      // Endurance suffisante → DEF attaque (inversion des rôles, Req 7 + Req 10)
-      return {
-        action: "attaque",
-        attackIntended,
-        repoAttempted: false,
-        repoSuccess: false,
-        scoreRepo: 0,
-        newDistance: null,
-        phaseIncrement: weaponDef.weight ?? 0,
-        enduranceCost: coutAttaque,
-        degraded: false
-      };
+  if (combatant.endurance <= COMBAT.seuilEndurance4) {
+    log(state, 'fatigue', `${name} est terrassé par la fatigue`);
+    logDev(state, 'debug', `(Endurance : ${combatant.endurance} / ${combatant.endMax})`);
+    combatant.fatigue = 20;
+    if (combatant.naCap > 2) {
+      const messages = [
+        `${name} ralentit le rythme`,
+        `${name} se préserve`,
+        `${name} réduit son activité`
+      ];
+      const index = Math.floor(rng() * messages.length);
+      log(state, 'fatigue', messages[index]);
+      logDev(state, 'debug', `(Niveau d'activité : ${combatant.naCap} → 2)`);
+      combatant.naCap = 2;
     }
-    // Endurance insuffisante → dégradation (Req 6 critères 3–6)
-    if (endurance >= coutRepo) {
-      return {
-        action: "repositionnement",
-        attackIntended,
-        repoAttempted: false,
-        repoSuccess: false,
-        scoreRepo: 0,
-        newDistance: resolveReposition(distanceReelle, enDefender).newDistance,
-        phaseIncrement: 2,
-        enduranceCost: coutRepo,
-        degraded: true
-      };
+  } else if (combatant.endurance <= COMBAT.seuilEndurance3) {
+    log(state, 'fatigue', `${name} est épuisé`);
+    logDev(state, 'debug', `(Endurance : ${combatant.endurance} / ${combatant.endMax})`);
+    combatant.fatigue = 15;
+    if (combatant.naCap > 4) {
+      log(state, 'fatigue', `${name} ralentit le rythme`);
+      logDev(state, 'debug', `(Niveau d'activité : ${combatant.naCap} → 4)`);
+      combatant.naCap = 4;
     }
-    // Endurance insuffisante même pour le repositionnement → récupération
-    return {
-      action: "recuperation",
-      attackIntended,
-      repoAttempted: false,
-      repoSuccess: false,
-      scoreRepo: 0,
-      newDistance: null,
-      phaseIncrement: 1,
-      enduranceCost: -1,
-      degraded: true
-    };
+  } else if (combatant.endurance <= COMBAT.seuilEndurance2) {
+    log(state, 'fatigue', `${name} commence à traîner des pieds`);
+    logDev(state, 'debug', `(Endurance : ${combatant.endurance} / ${combatant.endMax})`);
+    combatant.fatigue = 10;
+    if (combatant.naCap > 6) {
+      log(state, 'fatigue', `${name} ralentit le rythme`);
+      logDev(state, 'debug', `(Niveau d'activité : ${combatant.naCap} → 6)`);
+      combatant.naCap = 6;
+    }
+  } else if (combatant.endurance <= COMBAT.seuilEndurance1) {
+    log(state, 'fatigue', `${name} n'est plus aussi frais qu'au début du combat`);
+    logDev(state, 'debug', `(Endurance : ${combatant.endurance} / ${combatant.endMax})`);
+    combatant.fatigue = 5;
+    if (combatant.naCap > 8) {
+      log(state, 'fatigue', `${name} ralentit le rythme`);
+      logDev(state, 'debug', `(Niveau d'activité : ${combatant.naCap} → 8)`);
+      combatant.naCap = 8;
+    }
   }
-
-  // 3. DEF ne veut pas attaquer (d10EO > eoDefender)
-  const distanceSouhaitee = 11 - enDefender;
-
-  if (distanceReelle !== distanceSouhaitee) {
-    // Tentative de repositionnement
-    const scoreRepo = Math.floor((defenderStats.vitesse * 0.6 + defenderStats.intelligence * 0.4) * 5);
-    const repoAttempted = true;
-
-    if (scoreRepo - d100Repo >= 0 && endurance >= coutRepo) {
-      // Repositionnement réussi — appliquer la logique de resolveReposition
-      const { newDistance } = resolveReposition(distanceReelle, enDefender);
-      return {
-        action: "repositionnement",
-        attackIntended,
-        repoAttempted,
-        repoSuccess: true,
-        scoreRepo,
-        newDistance,
-        phaseIncrement: 2,
-        enduranceCost: coutRepo,
-        degraded: false
-      };
-    }
-
-    // Repositionnement échoué → récupération
-    return {
-      action: "recuperation",
-      attackIntended,
-      repoAttempted,
-      repoSuccess: false,
-      scoreRepo,
-      newDistance: null,
-      phaseIncrement: 1,
-      enduranceCost: -1,
-      degraded: false
-    };
-  }
-
-  // 4. DEF est déjà à sa distance souhaitée → récupération
-  return {
-    action: "recuperation",
-    attackIntended,
-    repoAttempted: false,
-    repoSuccess: false,
-    scoreRepo: 0,
-    newDistance: null,
-    phaseIncrement: 1,
-    enduranceCost: -1,
-    degraded: false
-  };
 }
 
-// ─── Réduction armure ─────────────────────────────────────────────────────────
-
-function computeArmorReduction(equipment) {
-  if (!equipment) return 0;
-  const slots = ["corps", "tete", "bras", "jambes"];
-  const total = slots.reduce((sum, slot) => sum + (equipment[slot]?.tier ?? 0), 0);
-  return Math.floor(total / 4);
-}
-
-// ─── Calcul dégâts ────────────────────────────────────────────────────────────
+// ─── Coûts d'endurance et récupération ────────────────────────────────────────
 
 /**
- * Calcule les dégâts d'une attaque réussie.
+ * Calcule le coût d'endurance d'une attaque.
+ * @param {number} weaponWeight - Poids de l'arme (1-14)
+ * @param {number} na - Niveau d'activité effectif (1-10)
+ * @param {number} surcout - Surcoût d'endurance (0-10)
+ * @returns {number} Coût total = weaponWeight + na + surcout
  *
- * Formule complète :
- *   baseArme = Math.floor(damFirst + (damLast - damFirst) × (tier - 1) / Math.max(nbTiers - 1, 1))
- *   modMatériau = table discrète [1.0, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0]
- *   coefStats = 1 + Σ((stat - 12) × 0.02 × weight)
- *   modAffinité = affinité / 100 (défaut 0 si absent — Req 13.4)
- *   modTypeDégâts = 1.0 (armures non implémentées — Req 13.5)
- *   TotalDamage = Math.floor(baseArme × modMatériau × coefStats × modAffinité × modTypeDégâts)
- *   dégâtsFinaux = Math.max(0, TotalDamage - armorReduction)
+ * Requirements: 6.4
+ */
+export function computeAttackCost(weaponWeight, na, surcout) {
+  return weaponWeight + na + surcout;
+}
+
+/**
+ * Calcule le coût d'endurance d'une défense (esquive ou parade).
+ * @param {number} na - Niveau d'activité effectif (1-10)
+ * @param {number} surcout - Surcoût d'endurance (0-10)
+ * @returns {number} Coût total = na + surcout
  *
- * @param {object} weaponDef - Définition de l'arme (damFirst, damLast, models, weightFO, etc.)
+ * Requirements: 6.5, 6.6
+ */
+export function computeDefenseCost(na, surcout) {
+  return na + surcout;
+}
+
+/**
+ * Applique la récupération d'endurance.
+ * @param {number} currentEndurance - Endurance courante
+ * @param {number} endMax - Endurance maximale
+ * @param {object} config - COMBAT config (for gainRecuperation)
+ * @returns {number} Nouvelle endurance (min(currentEndurance + gain, endMax))
+ *
+ * Requirements: 6.7
+ */
+export function applyRecovery(currentEndurance, endMax, config) {
+  return Math.min(currentEndurance + config.gainRecuperation, endMax);
+}
+
+// ─── Phase de Vivacité ─────────────────────────────────────────────────────────
+
+/**
+ * Phase de Vivacité — détermine qui est ATT et qui est DEF pour la minute.
+ *
+ * 1. Effectue un jet de Vivacité pour chaque combattant via rollSkill
+ * 2. Compare les qualités : la plus élevée désigne ATT
+ * 3. En cas d'égalité stricte, départage par tirage aléatoire (rng() < 0.5)
+ * 4. Ajoute une entrée de log indiquant le résultat
+ *
+ * @param {CombatState} state - État courant du combat
+ * @param {Function} rng - Générateur aléatoire
+ * @returns {CombatState} État mis à jour avec attacker défini
+ *
+ * Requirements: 9.1, 9.2, 9.3, 9.4
+ */
+export function phaseVivacite(state, rng) {
+  const pName = state.player.name;
+  const cName = state.creature.name;
+
+  while (true) {
+    // Jets de vivacité
+    const playerRoll = rollSkill(state.player.effective.vivacite, state.player.fatigue, rng);
+    const creatureRoll = rollSkill(state.creature.effective.vivacite, state.creature.fatigue, rng);
+
+    let c1Quality = playerRoll.quality;
+    let c2Quality = creatureRoll.quality;
+
+    // Alternance
+    if (state.attacker === 'player') {
+      c2Quality = c2Quality + COMBAT.alternance;
+    } else if (state.attacker === 'creature') {
+      c1Quality = c1Quality + COMBAT.alternance;
+    }
+
+    log(state, 'initiative', `${pName} vivacité : ${c1Quality} / ${cName} vivacité : ${c2Quality}`);
+    logDev(state, 'debug', `(${pName} — Vivacité: ${state.player.effective.vivacite} | D100: ${playerRoll.d100} | Fatigue: ${state.player.fatigue})`);
+    logDev(state, 'debug', `(${cName} — Vivacité: ${state.creature.effective.vivacite} | D100: ${creatureRoll.d100} | Fatigue: ${state.creature.fatigue})`);
+
+    if (c1Quality < 0 && c2Quality < 0) {
+      log(state, 'initiative', `Les deux combattants cherchent une ouverture dans les défenses de leur adversaire`);
+      continue; // goto Phase de vivacité
+    }
+
+    if (c1Quality >= c2Quality) {
+      if (c2Quality < 0) {
+        log(state, 'initiative', `${pName} prend l'initiative`);
+      } else {
+        log(state, 'initiative', `${pName} prend l'ascendant sur ${cName}`);
+      }
+      state.attacker = 'player';
+    } else {
+      if (c1Quality < 0) {
+        log(state, 'initiative', `${cName} prend l'initiative`);
+      } else {
+        log(state, 'initiative', `${cName} prend l'ascendant sur ${pName}`);
+      }
+      state.attacker = 'creature';
+    }
+
+    break;
+  }
+
+  return state;
+}
+
+// ─── Gestion de la distance ────────────────────────────────────────────────────
+
+/**
+ * Calcule la nouvelle distance après repositionnement.
+ *
+ * 1. Distance souhaitée = 11 - EN (plage résultante : 1 à 10)
+ * 2. Déplacement max = floor(NA / 2)
+ * 3. diff = desiredDist - currentDist
+ * 4. move = sign(diff) × min(|diff|, maxMove)
+ * 5. Résultat borné dans [distanceMin, distanceMax]
+ *
+ * @param {number} currentDist - Distance actuelle [1, 10]
+ * @param {number} en - Engagement tactique [1, 10]
+ * @param {number} na - Niveau d'activité effectif
+ * @param {object} config - COMBAT config
+ * @returns {number} Nouvelle distance [1, 10]
+ *
+ * Requirements: 10.1, 10.2, 10.3
+ */
+export function computeMovement(currentDist, en, na, config) {
+  const desiredDist = 11 - en;
+  const maxMove = Math.floor(na / 2);
+  const diff = desiredDist - currentDist;
+  const move = Math.sign(diff) * Math.min(Math.abs(diff), maxMove);
+  const newDist = currentDist + move;
+  return Math.max(config.distanceMin, Math.min(config.distanceMax, newDist));
+}
+
+// ─── Phase de Positionnement ───────────────────────────────────────────────────
+
+/**
+ * Repositionnement — repositionne un combattant avant l'attaque.
+ *
+ * @param {CombatState} state - État courant
+ * @returns {CombatState} État mis à jour avec distance modifiée
+ */
+export function phasePositionnement(state) {
+  const att = state[state.attacker];
+
+  // Tactique de la minute courante pour ATT
+  const tactics = att.tactics[Math.min(state.minute - 1, att.tactics.length - 1)];
+
+  // NA effectif plafonné par le naCap du palier de fatigue
+  const effectiveNA = Math.min(tactics.NA, att.naCap);
+
+  // DISTANCECIBLE = 11 - COMBATTANT.EN
+  const distanceCible = 11 - tactics.EN;
+
+  // PAS = Plancher(COMBATTANT.NA / 2)
+  const pas = Math.floor(effectiveNA / 2);
+
+  // DELTA = DISTANCECIBLE - DISTANCE
+  let delta = distanceCible - state.distance;
+  // DELTA = Max(-PAS, Min(PAS, DELTA))
+  delta = Math.max(-pas, Math.min(pas, delta));
+
+  // NOUVELLEDISTANCE = DISTANCE + DELTA
+  const nouvelleDistance = state.distance + delta;
+
+  if (distanceCible === state.distance) {
+    logDev(state, 'debug', `(${att.name} est déjà à bonne distance | Distance : ${state.distance} | Distance cible : ${distanceCible})`);
+  } else if (nouvelleDistance === state.distance) {
+    log(state, 'reposition', `${att.name} reste sur ses appuis`);
+    logDev(state, 'debug', `(Distance : ${state.distance} | Distance cible : ${distanceCible} | Pas : ${pas})`);
+  } else if (nouvelleDistance < state.distance) {
+    log(state, 'reposition', `${att.name} se rapproche de son adversaire`);
+    if (nouvelleDistance === distanceCible) {
+      log(state, 'reposition', `... et atteint sa distance idéale`);
+    }
+    logDev(state, 'debug', `(Distance : ${state.distance} → ${nouvelleDistance} | Distance cible : ${distanceCible} | Pas : ${pas})`);
+    state.distance = nouvelleDistance;
+  } else if (nouvelleDistance > state.distance) {
+    log(state, 'reposition', `${att.name} s'éloigne de son adversaire`);
+    if (nouvelleDistance === distanceCible) {
+      log(state, 'reposition', `... et atteint sa distance idéale`);
+    }
+    logDev(state, 'debug', `(Distance : ${state.distance} → ${nouvelleDistance} | Distance cible : ${distanceCible} | Pas : ${pas})`);
+    state.distance = nouvelleDistance;
+  }
+
+  return state;
+}
+
+// ─── Phase d'Attaque ───────────────────────────────────────────────────────────
+
+/**
+ * Phase d'Attaque — résolution de l'attaque.
+ *
+ * Algorithme (conforme à la spec) :
+ * 1. Si ATT.END < COUTENDURANCEATTAQUE :
+ *    - Log fatigue, récupération des deux combattants
+ *    - TEMPO += 1, goto Phase de riposte
+ * 2. Sinon (ATTAQUE) :
+ *    - Jet d'attaque : quality = ATT.ATTACK - D100 - ATT.FATIGUE
+ *    - Log "ATT attaque avec WEAPON"
+ *    - ATT.END -= COUTENDURANCEATTAQUE
+ *    - Si quality < 0 (RATÉ) : TEMPO += ATT.WEAPON.DIST, goto Phase de riposte
+ *    - Sinon (RÉUSSI) : TEMPO += ATT.WEAPON.DIST, goto Phase de défense
+ *
+ * @param {CombatState} state - État courant
+ * @param {Function} rng - Générateur aléatoire
+ * @returns {CombatState} État mis à jour
+ *
+ * Requirements: 10.4, 10.5, 10.6, 10.7
+ */
+export function phaseAttaque(state, rng) {
+  const att = state[state.attacker];
+  const defKey = state.attacker === 'player' ? 'creature' : 'player';
+  const def = state[defKey];
+
+  // Tactique de la minute courante pour ATT
+  const tactics = att.tactics[Math.min(state.minute - 1, att.tactics.length - 1)];
+
+  // NA effectif plafonné par le naCap du palier de fatigue
+  const effectiveNA = Math.min(tactics.NA, att.naCap);
+
+  // Calcul du coût d'attaque
+  const attackCost = computeAttackCost(att.weapon.poids, effectiveNA, att.surcout);
+
+  // ─── Vérification de l'endurance ────────────────────────────────────────
+  if (att.endurance < attackCost) {
+    log(state, 'recovery', `${att.name} est trop fatigué pour attaquer`);
+    logDev(state, 'debug', `(Endurance : ${att.endurance} | Coût attaque : ${attackCost})`);
+    log(state, 'recovery', `Les combattants reprennent leur souffle`);
+
+    // ATT.END = ATT.END + GAINENDURANCERECUP
+    att.endurance = att.endurance + COMBAT.gainRecuperation;
+    // DEF.END = DEF.END + GAINENDURANCERECUP
+    def.endurance = def.endurance + COMBAT.gainRecuperation;
+    logDev(state, 'debug', `(${att.name} Endurance : ${att.endurance} | ${def.name} Endurance : ${def.endurance})`);
+
+    // TEMPO = TEMPO + 1
+    logDev(state, 'debug', `(Tempo ${state.tempo} → ${state.tempo + 1})`);
+    state.tempo += 1;
+
+    // goto Phase de vivacité
+    state.skipToNextTempo = true;
+    return state;
+  }
+
+  // ─── ATTAQUE ────────────────────────────────────────────────────────────
+
+  // ATT.ATTACKQUALITY = ATT.ATTACK - JetD100()
+  const d100 = Math.floor(rng() * 100) + 1;
+  const attackQuality = att.effective.attaque - d100;
+
+  // Log "ATT.NOM attaque avec ATT.WEAPON.NAME"
+  log(state, 'attack', `${att.name} attaque avec ${att.weaponName}`);
+
+  // ATT.END = ATT.END - COUTENDURANCEATTAQUE
+  att.endurance -= attackCost;
+
+  if (attackQuality < 0) {
+    // ─── ATTAQUE RATÉE ──────────────────────────────────────────────────
+    state.attackResult = 'miss';
+    log(state, 'miss', `... mais l'attaque est mal exécutée`);
+    logDev(state, 'debug', `(Attaque : ${att.effective.attaque} | D100 : ${d100} | Qualité : ${attackQuality})`);
+    logDev(state, 'debug', `(Endurance : ${att.endurance} / ${att.endMax} | Coût attaque : ${attackCost})`);
+
+    // TEMPO = TEMPO + ATT.WEAPON.DIST
+    logDev(state, 'debug', `(Tempo ${state.tempo} → ${state.tempo + att.weapon.dist})`);
+    state.tempo += att.weapon.dist;
+
+    // goto Phase de riposte (géré par la boucle principale)
+  } else {
+    // ─── ATTAQUE RÉUSSIE ────────────────────────────────────────────────
+    state.attackResult = 'hit';
+    state.attackQuality = attackQuality;
+    log(state, 'attack', `... et touche son adversaire`);
+    logDev(state, 'debug', `(Attaque : ${att.effective.attaque} | D100 : ${d100} | Qualité : ${attackQuality})`);
+    logDev(state, 'debug', `(Endurance : ${att.endurance} / ${att.endMax} | Coût attaque : ${attackCost})`);
+
+    // TEMPO = TEMPO + ATT.WEAPON.DIST
+    logDev(state, 'debug', `(Tempo ${state.tempo} → ${state.tempo + att.weapon.dist})`);
+    state.tempo += att.weapon.dist;
+
+    // goto Phase de défense (géré par la boucle principale)
+  }
+
+  return state;
+}
+
+// ─── Sélection de défense ─────────────────────────────────────────────────────
+
+/**
+ * Sélectionne la meilleure défense payable.
+ *
+ * Logique :
+ * 1. Si esquiveEff > paradeEff → préférer esquive, fallback = parade
+ * 2. Sinon → préférer parade, fallback = esquive
+ * 3. Si endurance >= coût de la préférée → retourner la préférée
+ * 4. Sinon si endurance >= coût du fallback → retourner le fallback
+ * 5. Sinon → encaissement direct (coût 0)
+ *
+ * @param {number} esquiveEff - Esquive effective [1, 99]
+ * @param {number} paradeEff - Parade effective [1, 99]
+ * @param {number} endurance - Endurance courante
+ * @param {number} coutEsquive - Coût d'endurance de l'esquive
+ * @param {number} coutParade - Coût d'endurance de la parade
+ * @returns {{type: 'esquive'|'parade'|'encaissement', cost: number}}
+ *
+ * Requirements: 11.1, 11.2, 11.5
+ */
+export function selectDefense(esquiveEff, paradeEff, endurance, coutEsquive, coutParade) {
+  let preferred, fallback, costPreferred, costFallback;
+
+  if (esquiveEff > paradeEff) {
+    preferred = 'esquive';
+    fallback = 'parade';
+    costPreferred = coutEsquive;
+    costFallback = coutParade;
+  } else {
+    preferred = 'parade';
+    fallback = 'esquive';
+    costPreferred = coutParade;
+    costFallback = coutEsquive;
+  }
+
+  if (endurance >= costPreferred) {
+    return { type: preferred, cost: costPreferred };
+  }
+  if (endurance >= costFallback) {
+    return { type: fallback, cost: costFallback };
+  }
+  return { type: 'encaissement', cost: 0 };
+}
+
+// ─── Phase de Défense ─────────────────────────────────────────────────────────
+
+/**
+ * Phase de Défense — résolution de la défense du DEF.
+ *
+ * @param {CombatState} state - État courant (must have attackResult = 'hit')
+ * @param {Function} rng - Générateur aléatoire
+ * @returns {CombatState} État mis à jour
+ */
+export function phaseDefense(state, rng) {
+  if (state.attackResult !== 'hit') {
+    return state;
+  }
+
+  const defKey = state.attacker === 'player' ? 'creature' : 'player';
+  const def = state[defKey];
+
+  const tacticIndex = Math.min(state.minute - 1, def.tactics.length - 1);
+  const tactics = def.tactics[tacticIndex];
+  const effectiveNA = Math.min(tactics.NA, def.naCap);
+
+  const coutEsquive = computeDefenseCost(effectiveNA, def.surcout);
+  const coutParade = computeDefenseCost(effectiveNA, def.surcout);
+
+  // scoreEsquive = DEF.ESQUIVE - DEF.FATIGUE
+  const scoreEsquive = def.effective.esquive - def.fatigue;
+  // scoreParade = DEF.PARADE - DEF.FATIGUE
+  const scoreParade = def.effective.parade - def.fatigue;
+
+  // Choix de la défense
+  let defense = null;
+  if (scoreEsquive > Math.max(0, scoreParade) && def.endurance >= coutEsquive) {
+    defense = 'esquive';
+  } else if (scoreParade > 0 && def.endurance >= coutParade) {
+    defense = 'parade';
+  } else {
+    // Encaissement
+    state.defenseResult = 'encaissement';
+    log(state, 'defense', `${def.name} encaisse le coup`);
+    logDev(state, 'debug', `(Esquive : ${scoreEsquive} | Parade : ${scoreParade})`);
+    return state;
+  }
+
+  if (defense === 'esquive') {
+    const d100 = Math.floor(rng() * 100) + 1;
+    const dodgeQuality = scoreEsquive - d100;
+    log(state, 'defense', `${def.name} tente d'éviter l'attaque`);
+
+    if (dodgeQuality < 0) {
+      state.defenseResult = 'fail';
+      log(state, 'defense', `... mais ${def.name} n'est pas assez rapide`);
+      logDev(state, 'debug', `(Esquive : ${scoreEsquive} | D100 : ${d100} | Qualité : ${dodgeQuality})`);
+      def.endurance -= coutEsquive;
+      logDev(state, 'debug', `(Coût endurance : ${coutEsquive} | Endurance : ${def.endurance} / ${def.endMax})`);
+    } else {
+      state.defenseResult = 'success';
+      log(state, 'defense', `... et réussit son esquive`);
+      logDev(state, 'debug', `(Esquive : ${scoreEsquive} | D100 : ${d100} | Qualité : ${dodgeQuality})`);
+      def.endurance -= coutEsquive;
+      logDev(state, 'debug', `(Coût endurance : ${coutEsquive} | Endurance : ${def.endurance} / ${def.endMax})`);
+    }
+  }
+
+  if (defense === 'parade') {
+    const d100 = Math.floor(rng() * 100) + 1;
+    const parryQuality = scoreParade - d100;
+    log(state, 'defense', `${def.name} tente de parer l'attaque`);
+
+    if (parryQuality < 0) {
+      state.defenseResult = 'fail';
+      log(state, 'defense', `... mais ${def.name} rate sa parade`);
+      logDev(state, 'debug', `(Parade : ${scoreParade} | D100 : ${d100} | Qualité : ${parryQuality})`);
+      def.endurance -= coutParade;
+      logDev(state, 'debug', `(Coût endurance : ${coutParade} | Endurance : ${def.endurance} / ${def.endMax})`);
+    } else {
+      state.defenseResult = 'success';
+      log(state, 'defense', `... et réussit sa parade`);
+      logDev(state, 'debug', `(Parade : ${scoreParade} | D100 : ${d100} | Qualité : ${parryQuality})`);
+      def.endurance -= coutParade;
+      logDev(state, 'debug', `(Coût endurance : ${coutParade} | Endurance : ${def.endurance} / ${def.endMax})`);
+    }
+  }
+
+  return state;
+}
+
+// ─── Calcul des dégâts ────────────────────────────────────────────────────────
+
+/**
+ * WeaponDamage — retourne les dégâts de base selon le tier et le matériau de l'arme.
+ * WEAPON.tier : indice entre 1 et Longueur(WEAPON.models)
+ * WEAPON.materiau : indice entre 1 et 8
+ *
+ * @param {object} WEAPON - {tier, materiau, models, damFirst, damLast}
+ * @returns {number} Dégâts de base
+ */
+export function WeaponDamage(WEAPON) {
+  if (!WEAPON) return 0;
+  const NBRTIERS = WEAPON.models.length;
+  if (NBRTIERS < 2) throw new Error(`WeaponDamage: l'arme doit avoir au moins 2 modèles (reçu: ${NBRTIERS})`);
+  const MODMATERIEL = 1 + (WEAPON.materiau - 1) * 0.150;
+  const DAMAGE = (WEAPON.damFirst + (WEAPON.tier - 1) * (WEAPON.damLast - WEAPON.damFirst) / (NBRTIERS - 1)) * MODMATERIEL;
+  return Math.round(DAMAGE * 100) / 100;
+}
+
+/**
+ * WeaponModStats — retourne le modificateur de stats du porteur pour une arme donnée.
+ * Les poids sont issus de weapon.json : weightFO, weightTA, weightIN, weightVI, weightAD
+ *
+ * @param {object} WEAPON - {weightFO, weightTA, weightIN, weightVI, weightAD}
+ * @param {object} COMBATTANT - {FOR, ADR, VIT, TAI, INT}
+ * @returns {number} Modificateur de stats
+ */
+export function WeaponModStats(WEAPON, COMBATTANT) {
+  const MODSTATS = 1
+    + (COMBATTANT.FOR - 12) * 0.02 * WEAPON.weightFO
+    + (COMBATTANT.ADR - 12) * 0.02 * WEAPON.weightAD
+    + (COMBATTANT.VIT - 12) * 0.02 * WEAPON.weightVI
+    + (COMBATTANT.TAI - 12) * 0.02 * WEAPON.weightTA
+    + (COMBATTANT.INT - 12) * 0.02 * WEAPON.weightIN;
+  return Math.round(MODSTATS * 100) / 100;
+}
+
+/**
+ * WeaponModAff — retourne le modificateur d'affinité de l'arme contre le type de l'ennemi.
+ * COMBATTANT.type : bestial | elementaire | feerique | demoniaque | undead | reptilien
+ *
+ * @param {object} WEAPON - {aff_bestial, aff_elementaire, aff_feerique, aff_demoniaque, aff_undead, aff_reptilien}
+ * @param {object} COMBATTANT - {type}
+ * @returns {number} Modificateur d'affinité
+ */
+export function WeaponModAff(WEAPON, COMBATTANT) {
+  let AFFINITY = 0;
+  if (COMBATTANT.type == "bestial")      AFFINITY = WEAPON.aff_bestial;
+  if (COMBATTANT.type == "elementaire")  AFFINITY = WEAPON.aff_elementaire;
+  if (COMBATTANT.type == "feerique")     AFFINITY = WEAPON.aff_feerique;
+  if (COMBATTANT.type == "demoniaque")   AFFINITY = WEAPON.aff_demoniaque;
+  if (COMBATTANT.type == "undead")       AFFINITY = WEAPON.aff_undead;
+  if (COMBATTANT.type == "reptilien")    AFFINITY = WEAPON.aff_reptilien;
+  return Math.round((AFFINITY / 100 + 1) * 100) / 100;
+}
+
+/**
+ * computeDamage — wrapper pour les tests property existants.
+ * Adapte la signature (weaponDef, weaponItem, attackerStats, armorReduction, targetFamily)
+ * vers les trois fonctions du pseudo-code.
+ *
+ * @param {object|null} weaponDef - Définition de l'arme (damFirst, damLast, models, weightFO/TA/IN/VI/AD)
  * @param {object} weaponItem - Instance de l'arme (tier, material, affinities)
  * @param {object} attackerStats - Stats de l'attaquant (force, taille, intelligence, vitesse, adresse)
- * @param {number} armorReduction - Réduction d'armure (0 car armures non implémentées)
- * @param {string} [targetFamily] - Famille de la cible (pour lookup affinité)
- * @returns {{ raw: number, final: number, baseArme: number, modMateriau: number, coefStats: number, modAffinite: number, modTypeDegats: number }}
+ * @param {number} armorReduction - Réduction d'armure de la cible
+ * @param {string|undefined} targetFamily - Famille de la cible
+ * @returns {object} {baseArme, modMateriau, coefStats, modAffinite, modTypeDegats, raw, final}
  */
 export function computeDamage(weaponDef, weaponItem, attackerStats, armorReduction, targetFamily) {
-  if (!weaponDef) return { raw: 0, final: 0, baseArme: 0, modMateriau: 1, coefStats: 1, modAffinite: 1, modTypeDegats: 1 };
-
-  const nbTiers  = weaponDef.models?.length ?? 1;
-  const tier     = weaponItem?.tier ?? 1;
-  const baseArme = Math.floor(weaponDef.damFirst +
-    (weaponDef.damLast - weaponDef.damFirst) * (tier - 1) / Math.max(nbTiers - 1, 1));
-
-  const MATERIALS_MOD = [1.0, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0];
-  const modMateriau = MATERIALS_MOD[weaponItem?.material ?? 0] ?? 1.0;
-
-  const coefStats = 1
-    + (attackerStats.force        - 12) * 0.02 * (weaponDef.weightFO ?? 0)
-    + (attackerStats.taille       - 12) * 0.02 * (weaponDef.weightTA ?? 0)
-    + (attackerStats.intelligence - 12) * 0.02 * (weaponDef.weightIN ?? 0)
-    + (attackerStats.vitesse      - 12) * 0.02 * (weaponDef.weightVI ?? 0)
-    + (attackerStats.adresse      - 12) * 0.02 * (weaponDef.weightAD ?? 0);
-
-  // modAffinité : 1 + affinité / 100 (plage: 0 à 2)
-  // affinité = 0 → neutre (×1), affinité = 100 → double (×2), affinité = -100 → nul (×0)
-  // Si targetFamily n'est pas fourni (undefined), modAffinité = 1.0 (système d'affinité non applicable)
-  // Si targetFamily est fourni mais l'affinité est absente, modAffinité = 1.0 (neutre par défaut)
-  let modAffinite;
-  if (targetFamily === undefined) {
-    modAffinite = 1.0;
-  } else {
-    const affinityValue = weaponItem?.affinities?.[targetFamily] ?? 0;
-    modAffinite = 1 + affinityValue / 100;
+  if (!weaponDef) {
+    return { baseArme: 0, modMateriau: 1, coefStats: 1, modAffinite: 1, modTypeDegats: 1, raw: 0, final: 0 };
   }
 
-  // modTypeDégâts : placeholder = 1.0 (armures non implémentées — Req 13.5)
+  const NBRTIERS = weaponDef.models.length;
+  const tier = weaponItem?.tier ?? 1;
+  const materiau = (weaponItem?.material ?? 0) + 1; // convert 0-7 to 1-8
+
+  // baseArme (avec Arrondi à 2 décimales, conforme au pseudo-code)
+  const baseArme = Math.round((weaponDef.damFirst + (weaponDef.damLast - weaponDef.damFirst) * (tier - 1) / Math.max(NBRTIERS - 1, 1)) * 100) / 100;
+
+  // modMateriau = 1 + (materiau - 1) * 0.150
+  const modMateriau = 1 + (materiau - 1) * 0.150;
+
+  // coefStats (Arrondi à 2 décimales)
+  const coefStats = Math.round((1
+    + ((attackerStats.force ?? attackerStats.FOR ?? 12) - 12) * 0.02 * (weaponDef.weightFO ?? 0)
+    + ((attackerStats.taille ?? attackerStats.TAI ?? 12) - 12) * 0.02 * (weaponDef.weightTA ?? 0)
+    + ((attackerStats.intelligence ?? attackerStats.INT ?? 12) - 12) * 0.02 * (weaponDef.weightIN ?? 0)
+    + ((attackerStats.vitesse ?? attackerStats.VIT ?? 12) - 12) * 0.02 * (weaponDef.weightVI ?? 0)
+    + ((attackerStats.adresse ?? attackerStats.ADR ?? 12) - 12) * 0.02 * (weaponDef.weightAD ?? 0)) * 100) / 100;
+
+  // modAffinite (Arrondi à 2 décimales)
+  let modAffinite = 1.0;
+  if (targetFamily !== undefined) {
+    const affinityValue = weaponItem?.affinities?.[targetFamily] ?? 0;
+    modAffinite = Math.round((1 + affinityValue / 100) * 100) / 100;
+  }
+
+  // modTypeDegats
   const modTypeDegats = 1.0;
 
-  const raw   = Math.floor(baseArme * modMateriau * coefStats * modAffinite * modTypeDegats);
+  // raw
+  const raw = Math.floor(baseArme * modMateriau * coefStats * modAffinite * modTypeDegats);
+
+  // final
   const final = Math.max(0, raw - armorReduction);
-  return { raw, final, baseArme, modMateriau, coefStats, modAffinite, modTypeDegats };
+
+  return { baseArme, modMateriau, coefStats, modAffinite, modTypeDegats, raw, final };
 }
 
-// ─── Helpers log ──────────────────────────────────────────────────────────────
+// ─── Phase de Résolution des Dégâts ───────────────────────────────────────────
 
-function line(type, text) { return { type, text }; }
+/**
+ * Phase de Résolution des Dégâts — applique les dégâts au DEF.
+ *
+ * Conditions d'application :
+ * - L'attaque a touché (state.attackResult === 'hit')
+ * - La défense a échoué (state.defenseResult !== 'success')
+ *
+ * Implémentation conforme au pseudo-code :
+ *   DAMAGE = WeaponDamage(ATT.WEAPON)
+ *   MODSTATS = WeaponModStats(ATT.WEAPON, ATT)
+ *   MODAFF = WeaponModAff(ATT.WEAPON, DEF)
+ *   DAMAGE = DAMAGE * MODSTATS * MODAFF
+ *   FINALDAMAGE = Max(0, DAMAGE - DEF.ARMOR)
+ *
+ * @param {CombatState} state - État courant
+ * @returns {CombatState} État mis à jour
+ */
+export function phaseResolutionDegats(state) {
+  if (state.attackResult !== 'hit' || state.defenseResult === 'success') {
+    return state;
+  }
+
+  const attKey = state.attacker;
+  const defKey = attKey === 'player' ? 'creature' : 'player';
+  const att = state[attKey];
+  const def = state[defKey];
+
+  // DAMAGE = WeaponDamage(ATT.WEAPON)
+  let DAMAGE = WeaponDamage(att.weapon);
+  // MODSTATS = WeaponModStats(ATT.WEAPON, ATT)
+  const MODSTATS = WeaponModStats(att.weapon, att.stats);
+  // MODAFF = WeaponModAff(ATT.WEAPON, DEF)
+  const MODAFF = WeaponModAff(att.weapon, def);
+
+  // LogDev("Dégâts de l'arme : DAMAGE | ModStat : MODSTAT | ModAff : MODAFF")
+  logDev(state, 'debug', `Dégâts de l'arme : ${DAMAGE} | ModStat : ${MODSTATS} | ModAff : ${MODAFF}`);
+
+  // DAMAGE = plancher(DAMAGE * MODSTATS * MODAFF)
+  DAMAGE = Math.floor(DAMAGE * MODSTATS * MODAFF);
+
+  // Log("ATT.NOM inflige un coup de force DAMAGE")
+  log(state, 'damage', `${att.name} inflige un coup de force ${DAMAGE}`);
+
+  // LogDev("Armure : DEF.ARMOR")
+  logDev(state, 'debug', `Armure : ${def.ARMOR}`);
+
+  // FINALDAMAGE = Max(0, DAMAGE - DEF.ARMOR)
+  const FINALDAMAGE = Math.max(0, DAMAGE - def.ARMOR);
+
+  if (FINALDAMAGE <= 0) {
+    // Log("... mais le coup rebondit sur l'armure de DEF.NOM")
+    log(state, 'damage', `... mais le coup rebondit sur l'armure de ${def.name}`);
+    // LogDev("(Dégâts bruts : RAWDAMAGE | Armure : DEF.ARMOR)")
+    logDev(state, 'debug', `(Dégâts bruts : ${DAMAGE} | Armure : ${def.ARMOR})`);
+  } else {
+    // DEF.HP = DEF.HP - FINALDAMAGE
+    def.hp -= FINALDAMAGE;
+    // Log("... DEF.NOM perd FINALDAMAGE points de vie")
+    log(state, 'damage', `... ${def.name} perd ${FINALDAMAGE} points de vie`);
+    // LogDev("(HP : DEF.HP / DEF.HPMAX)")
+    logDev(state, 'debug', `(HP : ${def.hp} / ${def.hpMax})`);
+
+    // si DEF.HP < 1 alors
+    if (def.hp < 1) {
+      // Log("DEF.NOM s'écroule dans une mare de sang.")
+      log(state, 'death', `${def.name} s'écroule dans une mare de sang.`);
+      // Log("ATT.NOM est victorieux !")
+      log(state, 'victory', `${att.name} est victorieux !`);
+      // Exit()
+      const winner = attKey === 'player' ? 'player' : 'creature';
+      state.result = { winner, hpPlayer: state.player.hp, hpCreature: state.creature.hp };
+      state.combatOver = true;
+    }
+  }
+
+  return state;
+}
+
+// ─── Phase d'Initiative ─────────────────────────────────────────────────────────
+
+/**
+ * Phase d'Initiative — ATT tente d'enchaîner.
+ *
+ * ATT.D100 = JetD100()
+ * ATT.INITIATIVEQUALITY = ATT.INITIATIVE - ATT.D100 - ATT.FATIGUE
+ * si < 0 → goto Phase fin de boucle
+ * sinon → Log("ATT.NOM enchaîne les attaques"), goto Phase Attaque
+ *
+ * @param {CombatState} state - État courant du combat
+ * @param {Function} rng - Générateur aléatoire
+ * @returns {CombatState} État mis à jour
+ */
+export function phaseInitiative(state, rng) {
+  const att = state[state.attacker];
+
+  // ATT.D100 = JetD100()
+  const d100 = Math.floor(rng() * 100) + 1;
+  // ATT.INITIATIVEQUALITY = ATT.INITIATIVE - ATT.D100 - ATT.FATIGUE
+  const initiativeQuality = att.effective.initiative - d100 - att.fatigue;
+
+  if (initiativeQuality < 0) {
+    // LogDev("(Initiative : ATT.INITIATIVE | D100 : ATT.D100 | Fatigue : ATT.FATIGUE | Qualité : ATT.INITIATIVEQUALITY)")
+    logDev(state, 'debug', `(Initiative : ${att.effective.initiative} | D100 : ${d100} | Fatigue : ${att.fatigue} | Qualité : ${initiativeQuality})`);
+    // goto Phase fin de boucle
+    state.initiativeResult = 'lost';
+  } else {
+    // Log("ATT.NOM conserve l'initiative")
+    log(state, 'initiative', `${att.name} conserve l'initiative`);
+    // LogDev("(Initiative : ATT.INITIATIVE | D100 : ATT.D100 | Fatigue : ATT.FATIGUE | Qualité : ATT.INITIATIVEQUALITY)")
+    logDev(state, 'debug', `(Initiative : ${att.effective.initiative} | D100 : ${d100} | Fatigue : ${att.fatigue} | Qualité : ${initiativeQuality})`);
+    // goto Phase Attaque
+    state.initiativeResult = 'kept';
+  }
+
+  return state;
+}
+
+// ─── Phase de Riposte ──────────────────────────────────────────────────────────
+
+/**
+ * Phase de Riposte — DEF tente de prendre l'initiative.
+ *
+ * DEF.D100 = JetD100()
+ * DEF.RIPOSTEQUALITY = DEF.RIPOSTE - DEF.D100 - DEF.FATIGUE
+ * si < 0 → Log("DEF.NOM rate une opportunité de riposte"), goto Phase fin de boucle
+ * sinon → Log("DEF.NOM contre-attaque !"), Swap(ATT, DEF), goto Phase d'attaque
+ *
+ * @param {CombatState} state - État courant du combat
+ * @param {Function} rng - Générateur aléatoire
+ * @returns {CombatState} État mis à jour
+ */
+export function phaseRiposte(state, rng) {
+  if (state.initiativeResult !== 'lost') {
+    return state;
+  }
+
+  const defKey = state.attacker === 'player' ? 'creature' : 'player';
+  const def = state[defKey];
+
+  // DEF.D100 = JetD100()
+  const d100 = Math.floor(rng() * 100) + 1;
+  // DEF.RIPOSTEQUALITY = DEF.RIPOSTE - DEF.D100 - DEF.FATIGUE
+  const riposteQuality = def.effective.riposte - d100 - def.fatigue;
+
+  if (riposteQuality < 0) {
+    // Log("DEF.NOM rate une opportunité de riposte")
+    log(state, 'riposte', `${def.name} rate une opportunité de riposte`);
+    // LogDev("(Riposte : DEF.RIPOSTE | D100 : DEF.D100 | Fatigue : DEF.FATIGUE | Qualité : DEF.RIPOSTEQUALITY)")
+    logDev(state, 'debug', `(Riposte : ${def.effective.riposte} | D100 : ${d100} | Fatigue : ${def.fatigue} | Qualité : ${riposteQuality})`);
+    // goto Phase fin de boucle
+    state.riposteResult = 'fail';
+  } else {
+    // Log("DEF.NOM contre-attaque !")
+    log(state, 'riposte', `${def.name} contre-attaque !`);
+    // LogDev("(Riposte : DEF.RIPOSTE | D100 : DEF.D100 | Fatigue : DEF.FATIGUE | Qualité : DEF.RIPOSTEQUALITY)")
+    logDev(state, 'debug', `(Riposte : ${def.effective.riposte} | D100 : ${d100} | Fatigue : ${def.fatigue} | Qualité : ${riposteQuality})`);
+    // Swap(ATT, DEF)
+    state.attacker = defKey;
+    // goto Phase d'attaque
+    state.riposteResult = 'success';
+  }
+
+  return state;
+}
 
 // ─── Validation des entrées ───────────────────────────────────────────────────
 
-function validateInputs(playerData, creatureData) {
-  // Validation playerData
-  if (!playerData || !playerData.stats || playerData.hp == null || !playerData.tactic) {
-    throw new Error("resolveCombat: playerData invalide");
+/**
+ * Valide les données d'entrée des deux combattants.
+ * Vérifie :
+ * - 7 statistiques primaires dans [1, 24]
+ * - Au moins une tactique définie avec EO, NA, EN dans [1, 10]
+ * - Équipement complet (arme avec `dist`, armure avec `reduction`)
+ *
+ * Lève une Error descriptive si une contrainte est violée.
+ *
+ * @param {CombatantInput} playerData - Données du joueur
+ * @param {CombatantInput} creatureData - Données de la créature
+ * @throws {Error} Si une contrainte de validation est violée
+ *
+ * Requirements: 1.6, 1.7, 2.8
+ */
+export function validateInputs(playerData, creatureData) {
+  validateCombatant(playerData);
+  validateCombatant(creatureData);
+}
+
+/**
+ * Valide les données d'un combattant individuel.
+ * @param {CombatantInput} data
+ */
+function validateCombatant(data) {
+  // 1. Vérifier l'équipement complet (arme)
+  if (!data.weaponDef || !data.equipment) {
+    throw new Error("Équipement incomplet: arme ou armure manquante");
   }
 
-  // Validation creatureData
-  if (!creatureData || !creatureData.stats || creatureData.hp == null || !creatureData.tactic) {
-    throw new Error("resolveCombat: creatureData invalide");
+  // 2. Vérifier le champ 'dist' dans weaponDef
+  if (!("dist" in data.weaponDef)) {
+    throw new Error("Champ 'dist' manquant dans weaponDef");
   }
 
-  // Validation tactic joueur : tableau de 5 éléments avec EO, NA, EN
-  const playerTactic = playerData.tactic;
-  if (
-    !Array.isArray(playerTactic) ||
-    playerTactic.length !== 5 ||
-    !playerTactic.every(function hasEoNaEn(entry) {
-      return entry != null && "EO" in entry && "NA" in entry && "EN" in entry;
-    })
-  ) {
-    throw new Error("resolveCombat: tactic joueur invalide (attendu: tableau de 5 éléments {EO, NA, EN})");
+  // 3. Vérifier le champ 'reduction' dans armure (si armure présente)
+  if (data.equipment.armure && !("reduction" in data.equipment.armure)) {
+    throw new Error("Équipement incomplet: arme ou armure manquante");
   }
 
-  // Validation tactic créature : clés min1..min5 avec EO, NA, EN
-  const creatureTactic = creatureData.tactic;
-  const requiredKeys = ["min1", "min2", "min3", "min4", "min5"];
-  if (
-    creatureTactic == null ||
-    !requiredKeys.every(function hasMinKey(key) {
-      const entry = creatureTactic[key];
-      return entry != null && "EO" in entry && "NA" in entry && "EN" in entry;
-    })
-  ) {
-    throw new Error("resolveCombat: tactic créature invalide (attendu: min1..min5 avec {EO, NA, EN})");
+  // 4. Vérifier les 7 statistiques primaires dans [1, 24]
+  const statNames = ["FOR", "CON", "TAI", "INT", "VOL", "VIT", "ADR"];
+  for (const nom of statNames) {
+    const valeur = data.stats?.[nom];
+    if (valeur == null || !Number.isInteger(valeur) || valeur < 1 || valeur > 24) {
+      throw new Error(`Statistique invalide: ${nom} = ${valeur} (attendu: 1-24)`);
+    }
   }
 
-  // Validation weaponDef : champ dist requis
-  if (!playerData.weaponDef || !("dist" in playerData.weaponDef)) {
-    throw new Error("resolveCombat: champ 'dist' manquant dans weaponDef");
+  // 5. Vérifier au moins une tactique définie
+  if (!data.tactic || !Array.isArray(data.tactic) || data.tactic.length === 0) {
+    throw new Error("Tactique manquante pour le combattant");
   }
-  if (!creatureData.weaponDef || !("dist" in creatureData.weaponDef)) {
-    throw new Error("resolveCombat: champ 'dist' manquant dans weaponDef");
+
+  // 6. Vérifier chaque tactique : EO, NA, EN dans [1, 10]
+  const tacticFields = ["EO", "NA", "EN"];
+  for (const entry of data.tactic) {
+    if (entry == null) {
+      throw new Error("Tactique manquante pour le combattant");
+    }
+    for (const champ of tacticFields) {
+      const valeur = entry[champ];
+      if (valeur == null || !Number.isInteger(valeur) || valeur < 1 || valeur > 10) {
+        throw new Error(`Tactique invalide: ${champ} = ${valeur} (attendu: 1-10)`);
+      }
+    }
   }
 }
 
-// ─── Résolution complète ──────────────────────────────────────────────────────
+// ─── Initialisation de l'état de combat ───────────────────────────────────────
 
-export function resolveCombat(playerData, creatureData, options = {}) {
-  validateInputs(playerData, creatureData);
+/**
+ * Construit l'état initial du combat à partir des données des deux combattants.
+ *
+ * Pour chaque combattant :
+ * - Calcule HPMAX = (CON×19 + TAI×5 + VOL×2) / divisor
+ * - Calcule ENDMAX = (FOR + CON + VOL) × 3, borné dans [config.endMin, config.endMax]
+ * - Calcule Charge = Poids_Arme + Math.floor(Poids_Armure / 4)
+ * - Calcule Portage = FOR + Math.floor(TAI / 2)
+ * - Calcule Surcoût = Math.floor(Math.max(0, Charge - Portage) × 10 / 26)
+ * - Calcule les 6 compétences dérivées via computeDerivedSkills
+ * - Normalise chaque compétence en pourcentage via normalizeToPercent
+ *
+ * @param {CombatantInput} playerData - Données du joueur
+ * @param {CombatantInput} creatureData - Données de la créature
+ * @param {object} config - Configuration du combat (COMBAT)
+ * @returns {CombatState} État initial du combat
+ *
+ * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 6.1, 6.2, 6.3, 8.1
+ */
+export function initCombatState(playerData, creatureData, config) {
+  const player = buildCombatant(playerData, config);
+  const creature = buildCombatant(creatureData, config);
 
-  // ─── Options : devMode et injection de dés ──────────────────────────────────
-  const devMode = options.devMode ?? false;
-  const rollDieInjected = options.rollDie ?? function defaultRollDie(min, max) {
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-  };
-
-  // ─── Initialisation de l'état de combat ─────────────────────────────────────
-  const playerScores = computeScores(playerData.stats);
-  const creatureScores = computeScores(creatureData.stats);
-
-  const state = {
+  return {
     minute: 1,
-    phase: 1,
-    nbPhaseParMinute: 60,
-    distanceReelle: 10,
-    momentumA: 0,
-    momentumB: 0,
-    combatants: {
-      player: {
-        name: playerData.name,
-        stats: playerData.stats,
-        hp: playerData.hp,
-        hpMax: playerData.hp,
-        endurance: playerScores.enduranceInit,
-        enduranceInit: playerScores.enduranceInit,
-        naEffectif: 0, // computed below
-        charge: computeCharge(playerData.weaponDef, playerData.equipment),
-        portage: computePortage(playerData.stats),
-        surcoutEndurance: 0, // computed below
-        weaponDef: playerData.weaponDef,
-        weaponItem: playerData.weaponItem,
-        armorReduction: computeArmorReduction(playerData.equipment),
-        tactic: playerData.tactic,
-        isCreature: false
-      },
-      creature: {
-        name: creatureData.nameFr,
-        stats: creatureData.stats,
-        hp: creatureData.hp,
-        hpMax: creatureData.hp,
-        endurance: creatureScores.enduranceInit,
-        enduranceInit: creatureScores.enduranceInit,
-        naEffectif: 0, // computed below
-        charge: computeCharge(creatureData.weaponDef, creatureData.equipment),
-        portage: computePortage(creatureData.stats),
-        surcoutEndurance: 0, // computed below
-        weaponDef: creatureData.weaponDef,
-        weaponItem: creatureData.weaponItem ?? creatureData.equipment?.rightHand,
-        armorReduction: computeArmorReduction(creatureData.equipment),
-        tactic: creatureData.tactic,
-        isCreature: true,
-        family: creatureData.family
+    tempo: 1,
+    distance: config.distanceInitiale,
+    attacker: null,
+    devMode: false,
+    combatOver: false,
+
+    player,
+    creature,
+
+    log: [],
+    logBuffer: [],
+    result: null
+  };
+}
+
+/**
+ * Construit l'objet combattant interne à partir des données d'entrée.
+ * @param {CombatantInput} data
+ * @param {object} config
+ * @returns {object} Combattant initialisé
+ */
+function buildCombatant(data, config) {
+  const { stats } = data;
+
+  // Nom du combattant
+  const name = data.name ?? data.nameFr ?? 'Combattant';
+
+  // HP max : (CON×19 + TAI×5 + VOL×2) / divisor
+  const hpRaw = stats.CON * config.hpFormula.CON
+              + stats.TAI * config.hpFormula.TAI
+              + stats.VOL * config.hpFormula.VOL;
+  const hpMax = Math.floor(hpRaw / (config.hpFormula.divisor ?? 1));
+
+  // Endurance max : (FOR + CON + VOL) × 3
+  const endMax = (stats.FOR + stats.CON + stats.VOL) * config.endFormula.multiplier;
+
+  // Charge = Poids_Arme_Droite + Poids_Arme_Gauche + Poids_Armure / 4
+  const poidsArmeR = data.weaponDef.poids ?? data.weaponDef.weight ?? 0;
+  const poidsArmeL = data.weaponDefL?.poids ?? data.weaponDefL?.weight ?? 0;
+  const poidsArmure = data.equipment.armure?.poids ?? data.equipment.armure?.weight ?? 0;
+  const charge = poidsArmeR + poidsArmeL + Math.floor(poidsArmure / 4);
+
+  // Portage = FOR + TAI / 2
+  const portage = stats.FOR + Math.floor(stats.TAI / 2);
+
+  // Surcoût = Max(0, Charge - Portage) * 10 / 26
+  const surcout = Math.floor(Math.max(0, charge - portage) * config.surcoutMultiplier / config.surcoutDiviseur);
+
+  // Compétences dérivées (brutes)
+  const skills = computeDerivedSkills(stats, config);
+
+  // Normalisation en pourcentages
+  const skillNames = ['vivacite', 'initiative', 'attaque', 'parade', 'esquive', 'riposte'];
+  const divisors = { vivacite: 396, initiative: 228, attaque: 384, esquive: 444, parade: 336, riposte: 312 };
+  const percentages = {};
+  for (const name of skillNames) {
+    percentages[name] = normalizeToPercent(skills[name], config.normalization[name], divisors[name], config);
+  }
+
+  return {
+    name,
+    hp: hpMax,
+    hpMax,
+    endurance: endMax,
+    endMax,
+    fatigue: 0,
+    naCap: Infinity,
+    stats: data.stats,
+    type: data.family ?? null,
+    ARMOR: data.equipment.armure?.reduction ?? 0,
+    skills,
+    percentages,
+    effective: {},
+    tactics: data.tactic,
+    charge,
+    portage,
+    surcout,
+    weapon: data.weaponDef,
+    weaponName: data.weaponDef?.typeArme ?? data.weaponDef?.weaponType ?? 'arme',
+    weaponL: data.weaponDefL ?? null,
+    weaponNameL: data.weaponDefL?.typeArme ?? data.weaponDefL?.weaponType ?? null,
+    armor: data.equipment.armure,
+    armorName: data.equipment.armure?.name ?? data.equipment.armure?.nom ?? null
+  };
+}
+
+// ─── Boucle principale du combat ──────────────────────────────────────────────
+
+/**
+ * Boucle principale du combat.
+ *
+ * Structure :
+ * - Boucle externe sur les minutes (1 à config.maxMinutes)
+ *   - Récupère les tactiques de la minute pour chaque combattant
+ *   - Applique le plafond NA de fatigue aux tactiques
+ *   - Calcule les compétences effectives (ajustements tactiques)
+ *   - Phase Vivacité (une fois par minute) pour déterminer ATT/DEF
+ *   - Boucle interne sur les tempos (1 à config.nbTempoParMinute)
+ *     - Phase Attaque (repositionnement + jet d'attaque)
+ *     - Phase Défense (si attaque touche)
+ *     - Phase Résolution Dégâts (si attaque touche et défense échoue)
+ *     - Vérification condition de fin (HP ≤ 0)
+ *     - Phase Initiative
+ *     - Phase Riposte (si initiative perdue)
+ * - Match nul si maxMinutes dépassé
+ *
+ * @param {CombatState} state - État initial du combat
+ * @param {object} config - COMBAT config
+ * @param {Function} rng - Générateur aléatoire
+ * @returns {CombatState} État final avec result défini
+ *
+ * Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7
+ */
+export function mainLoop(state, config, rng) {
+  // ─── Phase début minute (première minute) ─────────────────────────────────
+  state.minute = 1;
+
+  // Tactiques de la minute
+  let playerTacticIndex = Math.min(state.minute - 1, state.player.tactics.length - 1);
+  let creatureTacticIndex = Math.min(state.minute - 1, state.creature.tactics.length - 1);
+  let playerTactics = state.player.tactics[playerTacticIndex];
+  let creatureTactics = state.creature.tactics[creatureTacticIndex];
+
+  // Appliquer le plafond NA de fatigue
+  let playerEffNA = Math.min(playerTactics.NA, state.player.naCap);
+  let creatureEffNA = Math.min(creatureTactics.NA, state.creature.naCap);
+
+  // Calcul des compétences effectives
+  state.player.effective = computeEffectiveSkills(
+    state.player.percentages,
+    { EO: playerTactics.EO, NA: playerEffNA, EN: playerTactics.EN },
+    state.distance, state.player.weapon.dist, config
+  );
+  state.creature.effective = computeEffectiveSkills(
+    state.creature.percentages,
+    { EO: creatureTactics.EO, NA: creatureEffNA, EN: creatureTactics.EN },
+    state.distance, state.creature.weapon.dist, config
+  );
+
+  log(state, 'separator', `=== Minute ${state.minute} ===`);
+  logDev(state, 'debug', `${state.player.name} Tactics — EO: ${playerTactics.EO} | NA: ${playerTactics.NA} | EN: ${playerTactics.EN}`);
+  logDev(state, 'debug', `${state.creature.name} Tactics — EO: ${creatureTactics.EO} | NA: ${creatureTactics.NA} | EN: ${creatureTactics.EN}`);
+
+  // Phase Vivacité initiale
+  state = phaseVivacite(state, rng);
+
+  // ─── Boucle principale ──────────────────────────────────────────────────────
+  state.tempo = 1;
+
+  while (true) {
+    // Reset per-tempo flags
+    state.attackResult = null;
+    state.defenseResult = null;
+    state.initiativeResult = null;
+    state.riposteResult = null;
+    state.skipToNextTempo = false;
+
+    // ─── Phase Positionnement ─────────────────────────────────────────────
+    state = phasePositionnement(state);
+
+    // ─── Boucle d'attaque (reboucle si riposte réussie → goto Phase d'attaque)
+    while (true) {
+      // ─── Phase Attaque ──────────────────────────────────────────────────
+      state = phaseAttaque(state, rng);
+
+      // Si skip (endurance insuffisante), goto Phase de vivacité
+      if (state.skipToNextTempo) {
+        break;
       }
+
+      // Si attaque ratée → goto Phase de riposte
+      if (state.attackResult === 'miss') {
+        state.initiativeResult = 'lost';
+        state = phaseRiposte(state, rng);
+
+        if (state.riposteResult === 'success') {
+          state.attackResult = null;
+          state.defenseResult = null;
+          state.initiativeResult = null;
+          state.riposteResult = null;
+          state.skipToNextTempo = false;
+          continue; // goto Phase d'attaque
+        }
+        // goto Phase fin de boucle
+        break;
+      }
+
+      // ─── Phase Défense (attaque a touché) ───────────────────────────────
+      state = phaseDefense(state, rng);
+
+      if (state.defenseResult === 'success') {
+        state.initiativeResult = 'lost';
+        state = phaseRiposte(state, rng);
+
+        if (state.riposteResult === 'success') {
+          state.attackResult = null;
+          state.defenseResult = null;
+          state.initiativeResult = null;
+          state.riposteResult = null;
+          state.skipToNextTempo = false;
+          continue; // goto Phase d'attaque
+        }
+        break;
+      }
+
+      // ─── Phase Résolution Dégâts ────────────────────────────────────────
+      state = phaseResolutionDegats(state);
+
+      if (state.combatOver) {
+        return state;
+      }
+
+      // ─── Phase d'initiative ─────────────────────────────────────────────
+      state = phaseInitiative(state, rng);
+
+      if (state.initiativeResult === 'kept') {
+        // goto Phase Attaque
+        state.attackResult = null;
+        state.defenseResult = null;
+        state.initiativeResult = null;
+        state.riposteResult = null;
+        state.skipToNextTempo = false;
+        continue;
+      }
+
+      // initiativeResult === 'lost' → Phase de riposte
+      state = phaseRiposte(state, rng);
+
+      if (state.riposteResult === 'success') {
+        state.attackResult = null;
+        state.defenseResult = null;
+        state.initiativeResult = null;
+        state.riposteResult = null;
+        state.skipToNextTempo = false;
+        continue; // goto Phase d'attaque
+      }
+
+      // goto Phase fin de boucle
+      break;
     }
+
+    // ─── Phase fin de boucle ──────────────────────────────────────────────
+
+    // Si goto Phase de vivacité (endurance insuffisante)
+    if (state.skipToNextTempo) {
+      state.skipToNextTempo = false;
+      state = phaseVivacite(state, rng);
+      continue;
+    }
+
+    // si TEMPO >= NBTEMPOPARMMINUTE
+    if (state.tempo >= config.nbTempoParMinute) {
+      // TEMPO = TEMPO - NBTEMPOPARMMINUTE
+      state.tempo = state.tempo - config.nbTempoParMinute;
+      // NUMMINUTE = NUMMINUTE + 1
+      state.minute = state.minute + 1;
+
+      // Vérification match nul
+      if (state.minute > config.maxMinutes) {
+        state.result = { winner: 'draw', hpPlayer: state.player.hp, hpCreature: state.creature.hp };
+        state.log.push({ type: 'draw', text: `Match nul — temps écoulé (${config.maxMinutes} minutes)` });
+        return state;
+      }
+
+      // TestEndurance(ATT)
+      // TestEndurance(DEF)
+      const attKey = state.attacker;
+      const defKey = attKey === 'player' ? 'creature' : 'player';
+      testEndurance(state[attKey], state, rng);
+      testEndurance(state[defKey], state, rng);
+
+      // goto Phase début minute
+      playerTacticIndex = Math.min(state.minute - 1, state.player.tactics.length - 1);
+      creatureTacticIndex = Math.min(state.minute - 1, state.creature.tactics.length - 1);
+      playerTactics = state.player.tactics[playerTacticIndex];
+      creatureTactics = state.creature.tactics[creatureTacticIndex];
+
+      playerEffNA = Math.min(playerTactics.NA, state.player.naCap);
+      creatureEffNA = Math.min(creatureTactics.NA, state.creature.naCap);
+
+      state.player.effective = computeEffectiveSkills(
+        state.player.percentages,
+        { EO: playerTactics.EO, NA: playerEffNA, EN: playerTactics.EN },
+        state.distance, state.player.weapon.dist, config
+      );
+      state.creature.effective = computeEffectiveSkills(
+        state.creature.percentages,
+        { EO: creatureTactics.EO, NA: creatureEffNA, EN: creatureTactics.EN },
+        state.distance, state.creature.weapon.dist, config
+      );
+
+      log(state, 'separator', `=== Minute ${state.minute} ===`);
+      logDev(state, 'debug', `${state.player.name} Tactics — EO: ${playerTactics.EO} | NA: ${playerTactics.NA} | EN: ${playerTactics.EN}`);
+      logDev(state, 'debug', `${state.creature.name} Tactics — EO: ${creatureTactics.EO} | NA: ${creatureTactics.NA} | EN: ${creatureTactics.EN}`);
+
+      state = phaseVivacite(state, rng);
+    } else {
+      // TestEndurance(ATT)
+      // TestEndurance(DEF)
+      const attKey = state.attacker;
+      const defKey = attKey === 'player' ? 'creature' : 'player';
+      testEndurance(state[attKey], state, rng);
+      testEndurance(state[defKey], state, rng);
+
+      // goto Phase de vivacité
+      state = phaseVivacite(state, rng);
+    }
+  }
+}
+
+// ─── Point d'entrée principal ──────────────────────────────────────────────────
+
+// ─── Normalisation des données serveur ─────────────────────────────────────────
+
+/**
+ * Mappe les noms de stats français longs vers les abréviations internes.
+ */
+const STAT_MAP = {
+  force: 'FOR', constitution: 'CON', taille: 'TAI',
+  intelligence: 'INT', 'volonté': 'VOL', vitesse: 'VIT', adresse: 'ADR'
+};
+
+/**
+ * Normalise les stats d'un combattant depuis le format serveur (noms français longs)
+ * vers le format interne (abréviations majuscules).
+ * Si les stats sont déjà en format abrégé (FOR, CON...), les retourne telles quelles.
+ */
+function normalizeStats(stats) {
+  if (!stats) return stats;
+  // Déjà en format abrégé ?
+  if ('FOR' in stats) return stats;
+  const result = {};
+  for (const [key, value] of Object.entries(stats)) {
+    const mapped = STAT_MAP[key];
+    if (mapped) result[mapped] = value;
+  }
+  return result;
+}
+
+/**
+ * Normalise les tactiques depuis les différents formats serveur vers un tableau
+ * d'objets {EO, NA, EN}.
+ *
+ * Formats supportés :
+ * - Tableau d'objets [{EO, NA, EN}, ...] (déjà normalisé)
+ * - Objet {min1: {EO, NA, EN}, min2: {...}, ...} (format bestiary)
+ * - null/undefined → tactique par défaut [{EO:5, NA:5, EN:5}]
+ */
+function normalizeTactics(tactic) {
+  if (!tactic) return [{ EO: 5, NA: 5, EN: 5 }];
+  if (Array.isArray(tactic)) return tactic;
+  // Format objet {min1: {...}, min2: {...}, ...}
+  if (typeof tactic === 'object') {
+    const entries = Object.keys(tactic)
+      .sort()
+      .map(key => tactic[key]);
+    return entries.length > 0 ? entries : [{ EO: 5, NA: 5, EN: 5 }];
+  }
+  return [{ EO: 5, NA: 5, EN: 5 }];
+}
+
+/**
+ * Normalise les données d'arme depuis le format serveur vers le format interne.
+ * Le serveur sépare weaponDef (définition de base) et weaponItem (instance avec tier/material).
+ *
+ * Format interne conforme au pseudo-code :
+ * - tier : indice entre 1 et Longueur(models)
+ * - materiau : indice entre 1 et 8
+ * - models, damFirst, damLast, weightFO, weightTA, weightIN, weightVI, weightAD
+ * - aff_bestial, aff_elementaire, aff_feerique, aff_demoniaque, aff_undead, aff_reptilien
+ */
+function normalizeWeapon(weaponDef, weaponItem) {
+  if (!weaponDef) return {
+    poids: 0, dist: 1, tier: 1, materiau: 1,
+    models: ["Mains nues", "Mains nues"], damFirst: 3, damLast: 8,
+    weightFO: 1, weightTA: 0, weightIN: 0, weightVI: 0, weightAD: 0,
+    aff_bestial: 0, aff_elementaire: 0, aff_feerique: 0, aff_demoniaque: 0, aff_undead: 0, aff_reptilien: 0
   };
 
-  // Compute surcoutEndurance for each combatant
-  state.combatants.player.surcoutEndurance = computeSurcoutEndurance(
-    state.combatants.player.charge,
-    state.combatants.player.portage
-  );
-  state.combatants.creature.surcoutEndurance = computeSurcoutEndurance(
-    state.combatants.creature.charge,
-    state.combatants.creature.portage
-  );
+  const tier = weaponItem?.tier ?? 1;
+  const materiau = (weaponItem?.material ?? 0) + 1; // convert 0-7 to 1-8
+  const affinities = weaponItem?.affinities ?? {};
 
-  // Compute initial NA_effectif for minute 1
-  const playerTacticMin1 = getTacticForMinute(state.combatants.player.tactic, 1, false);
-  state.combatants.player.naEffectif = computeNaEffectif(
-    playerTacticMin1.NA,
-    state.combatants.player.endurance
-  );
+  return {
+    poids: weaponDef.weight ?? 0,
+    dist: weaponDef.dist ?? 1,
+    tier,
+    materiau,
+    models: weaponDef.models ?? ["Arme"],
+    damFirst: weaponDef.damFirst ?? 5,
+    damLast: weaponDef.damLast ?? 10,
+    weightFO: weaponDef.weightFO ?? 0,
+    weightTA: weaponDef.weightTA ?? 0,
+    weightIN: weaponDef.weightIN ?? 0,
+    weightVI: weaponDef.weightVI ?? 0,
+    weightAD: weaponDef.weightAD ?? 0,
+    aff_bestial: affinities.bestial ?? 0,
+    aff_elementaire: affinities.elementaire ?? 0,
+    aff_feerique: affinities.feerique ?? 0,
+    aff_demoniaque: affinities.demoniaque ?? 0,
+    aff_undead: affinities.undead ?? 0,
+    aff_reptilien: affinities.reptilien ?? 0
+  };
+}
 
-  const creatureTacticMin1 = getTacticForMinute(state.combatants.creature.tactic, 1, true);
-  state.combatants.creature.naEffectif = computeNaEffectif(
-    creatureTacticMin1.NA,
-    state.combatants.creature.endurance
-  );
-
-  // ─── Boucle tick-par-tick ──────────────────────────────────────────────────
-  const log = [];
-  const rollDie = rollDieInjected;
-  let lastMinuteLogged = 0;
-
-  // Helper : incrémente la phase et logge en devMode
-  function advancePhase(increment, reason) {
-    const oldPhase = state.phase;
-    state.phase += increment;
-    if (devMode) {
-      log.push(line("debug", `Phase ${oldPhase} → ${state.phase} (+${increment}, ${reason})`));
+/**
+ * Normalise l'équipement d'un combattant vers le format interne.
+ * Le serveur peut avoir equipment: null (joueur) ou un objet avec des slots d'armure.
+ */
+function normalizeEquipment(equipment) {
+  if (!equipment) {
+    return { armure: null };
+  }
+  // Si déjà au format interne
+  if (equipment.armure && 'reduction' in equipment.armure) {
+    return equipment;
+  }
+  // Format serveur : slots d'armure (corps, tete, bras, jambes)
+  // Calculer une réduction basée sur le nombre de pièces et leur tier
+  let reduction = 0;
+  let poids = 0;
+  let hasArmor = false;
+  const slots = ['corps', 'tete', 'bras', 'jambes'];
+  for (const slot of slots) {
+    const piece = equipment[slot];
+    if (piece) {
+      hasArmor = true;
+      const tier = piece.tier ?? 1;
+      reduction += tier;
+      poids += tier * 2;
     }
   }
+  if (!hasArmor) {
+    return { armure: null };
+  }
+  return { armure: { reduction, poids } };
+}
 
-  // Main combat loop
-  while (state.minute <= 20 && state.combatants.player.hp > 0 && state.combatants.creature.hp > 0) {
-    // --- MINUTE SEPARATOR ---
-    if (state.minute > lastMinuteLogged) {
-      log.push(line("separator", `───── Minute ${state.minute} ─────`));
-      lastMinuteLogged = state.minute;
+/**
+ * Normalise les données d'un combattant depuis le format serveur vers le format
+ * CombatantInput attendu par le moteur de combat.
+ */
+function normalizeCombatantData(data) {
+  return {
+    name: data.name ?? data.nameFr ?? 'Combattant',
+    nameFr: data.nameFr ?? data.name ?? 'Combattant',
+    stats: normalizeStats(data.stats),
+    tactic: normalizeTactics(data.tactic),
+    weaponDef: normalizeWeapon(data.weaponDef, data.weaponItem),
+    weaponDefL: data.weaponDefL ? normalizeWeapon(data.weaponDefL, data.weaponItemL) : null,
+    equipment: normalizeEquipment(data.equipment),
+    family: data.family ?? null
+  };
+}
 
-      // Debug: minute start with EO/NA/EN and NA_effectif (une seule fois par minute)
-      if (devMode) {
-        const player = state.combatants.player;
-        const creature = state.combatants.creature;
-        const playerTacticDbg = getTacticForMinute(player.tactic, state.minute, false);
-        const creatureTacticDbg = getTacticForMinute(creature.tactic, state.minute, true);
-        log.push(line("debug", `Début minute ${state.minute} — ${player.name}: EO=${playerTacticDbg.EO} NA=${playerTacticDbg.NA} EN=${playerTacticDbg.EN} | ${creature.name}: EO=${creatureTacticDbg.EO} NA=${creatureTacticDbg.NA} EN=${creatureTacticDbg.EN}`));
-        log.push(line("debug", `NA_effectif de ${player.name} : ${player.naEffectif}`));
-        log.push(line("debug", `NA_effectif de ${creature.name} : ${creature.naEffectif}`));
-      }
-    }
+// ─── Point d'entrée principal ──────────────────────────────────────────────────
 
-    // Get current tactic for both combatants
-    const playerTactic = getTacticForMinute(state.combatants.player.tactic, state.minute, false);
-    const creatureTactic = getTacticForMinute(state.combatants.creature.tactic, state.minute, true);
-
-    // --- INITIATIVE ---
-    const d10A = rollDie(1, 10);
-    const d10B = rollDie(1, 10);
-    const vivA = computeVivacite(state.combatants.player.naEffectif, state.combatants.player.stats, state.momentumA, d10A);
-    const vivB = computeVivacite(state.combatants.creature.naEffectif, state.combatants.creature.stats, state.momentumB, d10B);
-    const tieBreaker = rollDie(1, 2) === 1;
-    const attId = determineInitiative(vivA, vivB, state.combatants.player.naEffectif, state.combatants.creature.naEffectif, tieBreaker);
-
-    const att = attId === "A" ? state.combatants.player : state.combatants.creature;
-    const def = attId === "A" ? state.combatants.creature : state.combatants.player;
-    const attTactic = attId === "A" ? playerTactic : creatureTactic;
-    const defTactic = attId === "A" ? creatureTactic : playerTactic;
-
-    // Debug: initiative dice
-    if (devMode) {
-      log.push(line("debug", `D10 initiative ${state.combatants.player.name} : ${d10A}, ${state.combatants.creature.name} : ${d10B}`));
-    }
-
-    // Log initiative
-    log.push(line("initiative", `${att.name} prend l'initiative (vivacité: ${vivA}/${vivB})`));
-
-    // --- COMPUTE COSTS ---
-    const coutNA_att = Math.floor(att.naEffectif / 2);
-    const coutNA_def = Math.floor(def.naEffectif / 2);
-    const coutAttaque_att = Math.floor((att.weaponDef.weight ?? 0) + coutNA_att + att.surcoutEndurance);
-    const coutRepo_att = Math.floor(1 + coutNA_att + att.surcoutEndurance);
-    const coutAttaque_def = Math.floor((def.weaponDef.weight ?? 0) + coutNA_def + def.surcoutEndurance);
-    const coutRepo_def = Math.floor(1 + coutNA_def + def.surcoutEndurance);
-    const coutEsquive_def = Math.floor(5 + coutNA_def + def.surcoutEndurance);
-    const coutParade_def = Math.floor(2 + coutNA_def + def.surcoutEndurance);
-
-    // --- ATT ACTION ---
-    const d10EO = rollDie(1, 10);
-    const actionResult = chooseAction(attTactic.EO, att.endurance, coutAttaque_att, coutRepo_att, d10EO, state.distanceReelle, attTactic.EN);
-
-    // Debug: action choice
-    if (devMode) {
-      log.push(line("debug", `${att.name} : ${actionResult.action}${actionResult.fatigueMessage ? ' (' + actionResult.fatigueMessage + ')' : ''}`));
-    }
-
-    // Log fatigue message if applicable
-    if (actionResult.fatigueMessage) {
-      log.push(line("action", `${actionResult.fatigueMessage}`));
-    }
-
-    if (actionResult.action === "attaque") {
-      // Deduct endurance
-      att.endurance = clampEndurance(att.endurance - coutAttaque_att, att.enduranceInit);
-
-      // Debug: endurance after action
-      if (devMode) {
-        log.push(line("debug", `Endurance de ${att.name} : ${att.endurance} / ${att.enduranceInit}`));
-      }
-
-      // Resolve attack
-      const d100Att = rollDie(1, 100);
-      const attackResult = resolveAttack(att.stats, att.weaponDef, state.distanceReelle, d100Att);
-      advancePhase(attackResult.phaseIncrement, "attaque " + att.name);
-
-      // Log attack
-      log.push(line("attack", `Attaque (score=${attackResult.attackScore}, jet=${d100Att}, qualité=${attackResult.attackQuality})`));
-
-      if (attackResult.hit) {
-        // DEF must defend
-        const d100Def = rollDie(1, 100);
-        const defenseResult = chooseDefense(def.stats, defTactic.EO, def.naEffectif, defTactic.EN, def.endurance, coutEsquive_def, coutParade_def, d100Def);
-        def.endurance = clampEndurance(def.endurance - defenseResult.enduranceCost, def.enduranceInit);
-        advancePhase(defenseResult.phaseIncrement, "défense " + def.name);
-
-        // Debug: defense choice
-        if (devMode) {
-          log.push(line("debug", `${def.name} choisit ${defenseResult.defenseType} (DodgeScore=${defenseResult.dodgeScore}, ParryScore=${defenseResult.parryScore})`));
-        }
-
-        // Log defense attempt and result
-        if (defenseResult.defenseType === "esquive") {
-          log.push(line("dodge_attempt", `Esquive (score=${defenseResult.dodgeScore}, jet=${d100Def})`));
-          if (defenseResult.success) {
-            log.push(line("dodge", `Esquive réussie`));
-          } else {
-            log.push(line("defense_fail", `Défense échouée`));
-          }
-        } else if (defenseResult.defenseType === "parade") {
-          log.push(line("parry_attempt", `Parade (score=${defenseResult.parryScore}, jet=${d100Def})`));
-          if (defenseResult.success) {
-            log.push(line("parry", `Parade réussie`));
-          } else {
-            log.push(line("defense_fail", `Défense échouée`));
-          }
-        } else {
-          // encaisse
-          log.push(line("defense_fail", `Défense échouée`));
-        }
-
-        if (!defenseResult.success) {
-          // Apply damage
-          const targetFamily = attId === "A" ? def.family : undefined;
-          const dmg = computeDamage(att.weaponDef, att.weaponItem, att.stats, def.armorReduction, targetFamily);
-          def.hp = Math.max(0, Math.min(def.hpMax, def.hp - dmg.final));
-
-          // Debug: damage detail
-          if (devMode) {
-            log.push(line("debug", `Dégâts : baseArme=${dmg.baseArme} × modMat=${dmg.modMateriau} × coefStats=${dmg.coefStats.toFixed(2)} × modAffinité=${dmg.modAffinite} × modType=${dmg.modTypeDegats} = ${dmg.raw}`));
-          }
-
-          // Log damage
-          if (def.armorReduction > 0) {
-            log.push(line("armor", `Armure absorbe ${def.armorReduction}`));
-          }
-          log.push(line("hit", `${dmg.final} dégâts → ${def.name} (HP: ${def.hp}/${def.hpMax})`));
-        }
-      } else {
-        // ATT missed
-        log.push(line("miss", `Raté`));
-
-        // DEF can riposte
-        const d100Riposte = rollDie(1, 100);
-        const d100RiposteAttack = rollDie(1, 100);
-        const riposteResult = resolveRiposte(def.stats, def.naEffectif, state.distanceReelle, def.endurance, coutAttaque_def, def.weaponDef, d100Riposte, d100RiposteAttack);
-
-        // Log riposte attempt
-        log.push(line("riposte_attempt", `Riposte (score=${riposteResult.riposteScore}, jet=${d100Riposte})`));
-
-        if (riposteResult.riposteAuthorized) {
-          def.endurance = clampEndurance(def.endurance - riposteResult.enduranceCost, def.enduranceInit);
-          advancePhase(riposteResult.phaseIncrement, "riposte " + def.name);
-
-          if (riposteResult.riposteHit) {
-            log.push(line("riposte", `Riposte touche ! (qualité=${riposteResult.attackResult.attackQuality})`));
-            const targetFamily = attId === "A" ? undefined : att.family;
-            const dmg = computeDamage(def.weaponDef, def.weaponItem, def.stats, att.armorReduction, targetFamily);
-            att.hp = Math.max(0, Math.min(att.hpMax, att.hp - dmg.final));
-
-            // Debug: riposte damage detail
-            if (devMode) {
-              log.push(line("debug", `Dégâts : baseArme=${dmg.baseArme} × modMat=${dmg.modMateriau} × coefStats=${dmg.coefStats.toFixed(2)} × modAffinité=${dmg.modAffinite} × modType=${dmg.modTypeDegats} = ${dmg.raw}`));
-            }
-
-            // Log riposte damage
-            if (att.armorReduction > 0) {
-              log.push(line("armor", `Armure absorbe ${att.armorReduction}`));
-            }
-            log.push(line("hit", `${dmg.final} dégâts → ${att.name} (HP: ${att.hp}/${att.hpMax})`));
-          } else {
-            log.push(line("riposte_fail", `Riposte échouée`));
-          }
-        } else {
-          log.push(line("riposte_fail", `Riposte échouée`));
-        }
-      }
-    } else if (actionResult.action === "repositionnement") {
-      // Deduct endurance
-      att.endurance = clampEndurance(att.endurance - coutRepo_att, att.enduranceInit);
-
-      // Debug: endurance after action
-      if (devMode) {
-        log.push(line("debug", `Endurance de ${att.name} : ${att.endurance} / ${att.enduranceInit}`));
-      }
-
-      // Resolve reposition
-      const oldDistance = state.distanceReelle;
-      const repoResult = resolveReposition(state.distanceReelle, attTactic.EN);
-      state.distanceReelle = repoResult.newDistance;
-      advancePhase(repoResult.phaseIncrement, "repositionnement " + att.name);
-
-      // Log reposition (uniquement si la distance a changé)
-      if (state.distanceReelle !== oldDistance) {
-        log.push(line("reposition", `Distance ${oldDistance} → ${state.distanceReelle}`));
-      } else {
-        log.push(line("reposition", `Distance ${state.distanceReelle} (inchangée)`));
-      }
-
-      // DEF reaction
-      const d10EO_def = rollDie(1, 10);
-      const d100Repo_def = rollDie(1, 100);
-      const defReaction = resolveDefenderReaction(def.stats, defTactic.EO, defTactic.EN, def.endurance, coutAttaque_def, coutRepo_def, state.distanceReelle, def.weaponDef, d10EO_def, d100Repo_def);
-
-      // Apply DEF reaction
-      if (defReaction.action === "attaque") {
-        def.endurance = clampEndurance(def.endurance - defReaction.enduranceCost, def.enduranceInit);
-        advancePhase(defReaction.phaseIncrement, "réaction " + def.name);
-        // DEF attacks ATT
-        const d100DefAtt = rollDie(1, 100);
-        const defAttackResult = resolveAttack(def.stats, def.weaponDef, state.distanceReelle, d100DefAtt);
-
-        // Log DEF attack (roles inverted — DEF counter-attacks)
-        log.push(line("attack", `${def.name} contre-attaque (score=${defAttackResult.attackScore}, jet=${d100DefAtt}, qualité=${defAttackResult.attackQuality})`));
-
-        if (defAttackResult.hit) {
-          // ATT must defend
-          const coutEsquive_att = Math.floor(5 + coutNA_att + att.surcoutEndurance);
-          const coutParade_att = Math.floor(2 + coutNA_att + att.surcoutEndurance);
-          const d100AttDef = rollDie(1, 100);
-          const attDefenseResult = chooseDefense(att.stats, attTactic.EO, att.naEffectif, attTactic.EN, att.endurance, coutEsquive_att, coutParade_att, d100AttDef);
-          att.endurance = clampEndurance(att.endurance - attDefenseResult.enduranceCost, att.enduranceInit);
-          advancePhase(attDefenseResult.phaseIncrement, "défense " + att.name);
-
-          // Debug: defense choice (ATT defending against DEF)
-          if (devMode) {
-            log.push(line("debug", `${att.name} choisit ${attDefenseResult.defenseType} (DodgeScore=${attDefenseResult.dodgeScore}, ParryScore=${attDefenseResult.parryScore})`));
-          }
-
-          // Log ATT defense
-          if (attDefenseResult.defenseType === "esquive") {
-            log.push(line("dodge_attempt", `Esquive (score=${attDefenseResult.dodgeScore}, jet=${d100AttDef})`));
-            if (attDefenseResult.success) {
-              log.push(line("dodge", `Esquive réussie`));
-            } else {
-              log.push(line("defense_fail", `Défense échouée`));
-            }
-          } else if (attDefenseResult.defenseType === "parade") {
-            log.push(line("parry_attempt", `Parade (score=${attDefenseResult.parryScore}, jet=${d100AttDef})`));
-            if (attDefenseResult.success) {
-              log.push(line("parry", `Parade réussie`));
-            } else {
-              log.push(line("defense_fail", `Défense échouée`));
-            }
-          } else {
-            log.push(line("defense_fail", `Défense échouée`));
-          }
-
-          if (!attDefenseResult.success) {
-            const targetFamily = attId === "A" ? undefined : att.family;
-            const dmg = computeDamage(def.weaponDef, def.weaponItem, def.stats, att.armorReduction, targetFamily);
-            att.hp = Math.max(0, Math.min(att.hpMax, att.hp - dmg.final));
-
-            // Debug: damage detail
-            if (devMode) {
-              log.push(line("debug", `Dégâts : baseArme=${dmg.baseArme} × modMat=${dmg.modMateriau} × coefStats=${dmg.coefStats.toFixed(2)} × modAffinité=${dmg.modAffinite} × modType=${dmg.modTypeDegats} = ${dmg.raw}`));
-            }
-
-            // Log damage
-            if (att.armorReduction > 0) {
-              log.push(line("armor", `Armure absorbe ${att.armorReduction}`));
-            }
-            log.push(line("hit", `${dmg.final} dégâts → ${att.name} (HP: ${att.hp}/${att.hpMax})`));
-          }
-        } else {
-          log.push(line("miss", `Raté`));
-        }
-      } else if (defReaction.action === "repositionnement") {
-        const oldDistDef = state.distanceReelle;
-        def.endurance = clampEndurance(def.endurance - defReaction.enduranceCost, def.enduranceInit);
-        if (defReaction.newDistance !== null) {
-          state.distanceReelle = defReaction.newDistance;
-        }
-        advancePhase(defReaction.phaseIncrement, "réaction " + def.name);
-
-        // Log DEF reposition
-                if (state.distanceReelle !== oldDistDef) {
-          log.push(line("reposition", `Distance ${oldDistDef} → ${state.distanceReelle}`));
-        } else {
-          log.push(line("reposition", `Distance ${state.distanceReelle} (inchangée)`));
-        }
-      } else {
-        // recuperation
-        def.endurance = clampEndurance(def.endurance + 1, def.enduranceInit);
-        advancePhase(1, "récupération " + def.name);
-
-        // Log DEF recovery
-        log.push(line("recovery", `Récupération (endurance: ${def.endurance}/${def.enduranceInit})`));
-      }
-    } else {
-      // recuperation
-      att.endurance = clampEndurance(att.endurance + 1, att.enduranceInit);
-      advancePhase(1, "récupération " + def.name);
-
-      // Debug: endurance after recovery
-      if (devMode) {
-        log.push(line("debug", `Endurance de ${att.name} : ${att.endurance} / ${att.enduranceInit}`));
-      }
-
-      // Log ATT recovery
-      log.push(line("recovery", `Récupération (endurance: ${att.endurance}/${att.enduranceInit})`));
-
-      // DEF reaction (same as repositionnement case)
-      const d10EO_def = rollDie(1, 10);
-      const d100Repo_def = rollDie(1, 100);
-      const defReaction = resolveDefenderReaction(def.stats, defTactic.EO, defTactic.EN, def.endurance, coutAttaque_def, coutRepo_def, state.distanceReelle, def.weaponDef, d10EO_def, d100Repo_def);
-
-      if (defReaction.action === "attaque") {
-        def.endurance = clampEndurance(def.endurance - defReaction.enduranceCost, def.enduranceInit);
-        advancePhase(defReaction.phaseIncrement, "réaction " + def.name);
-        const d100DefAtt = rollDie(1, 100);
-        const defAttackResult = resolveAttack(def.stats, def.weaponDef, state.distanceReelle, d100DefAtt);
-
-        // Log DEF attack (roles inverted — DEF counter-attacks)
-        log.push(line("attack", `${def.name} contre-attaque (score=${defAttackResult.attackScore}, jet=${d100DefAtt}, qualité=${defAttackResult.attackQuality})`));
-
-        if (defAttackResult.hit) {
-          const coutEsquive_att = Math.floor(5 + coutNA_att + att.surcoutEndurance);
-          const coutParade_att = Math.floor(2 + coutNA_att + att.surcoutEndurance);
-          const d100AttDef = rollDie(1, 100);
-          const attDefenseResult = chooseDefense(att.stats, attTactic.EO, att.naEffectif, attTactic.EN, att.endurance, coutEsquive_att, coutParade_att, d100AttDef);
-          att.endurance = clampEndurance(att.endurance - attDefenseResult.enduranceCost, att.enduranceInit);
-          advancePhase(attDefenseResult.phaseIncrement, "défense " + att.name);
-
-          // Debug: defense choice (ATT defending against DEF in recovery branch)
-          if (devMode) {
-            log.push(line("debug", `${att.name} choisit ${attDefenseResult.defenseType} (DodgeScore=${attDefenseResult.dodgeScore}, ParryScore=${attDefenseResult.parryScore})`));
-          }
-
-          // Log ATT defense
-          if (attDefenseResult.defenseType === "esquive") {
-            log.push(line("dodge_attempt", `Esquive (score=${attDefenseResult.dodgeScore}, jet=${d100AttDef})`));
-            if (attDefenseResult.success) {
-              log.push(line("dodge", `Esquive réussie`));
-            } else {
-              log.push(line("defense_fail", `Défense échouée`));
-            }
-          } else if (attDefenseResult.defenseType === "parade") {
-            log.push(line("parry_attempt", `Parade (score=${attDefenseResult.parryScore}, jet=${d100AttDef})`));
-            if (attDefenseResult.success) {
-              log.push(line("parry", `Parade réussie`));
-            } else {
-              log.push(line("defense_fail", `Défense échouée`));
-            }
-          } else {
-            log.push(line("defense_fail", `Défense échouée`));
-          }
-
-          if (!attDefenseResult.success) {
-            const targetFamily = attId === "A" ? undefined : att.family;
-            const dmg = computeDamage(def.weaponDef, def.weaponItem, def.stats, att.armorReduction, targetFamily);
-            att.hp = Math.max(0, Math.min(att.hpMax, att.hp - dmg.final));
-
-            // Debug: damage detail
-            if (devMode) {
-              log.push(line("debug", `Dégâts : baseArme=${dmg.baseArme} × modMat=${dmg.modMateriau} × coefStats=${dmg.coefStats.toFixed(2)} × modAffinité=${dmg.modAffinite} × modType=${dmg.modTypeDegats} = ${dmg.raw}`));
-            }
-
-            // Log damage
-            if (att.armorReduction > 0) {
-              log.push(line("armor", `Armure absorbe ${att.armorReduction}`));
-            }
-            log.push(line("hit", `${dmg.final} dégâts → ${att.name} (HP: ${att.hp}/${att.hpMax})`));
-          }
-        } else {
-          log.push(line("miss", `Raté`));
-        }
-      } else if (defReaction.action === "repositionnement") {
-        const oldDistDef = state.distanceReelle;
-        def.endurance = clampEndurance(def.endurance - defReaction.enduranceCost, def.enduranceInit);
-        if (defReaction.newDistance !== null) {
-          state.distanceReelle = defReaction.newDistance;
-        }
-        advancePhase(defReaction.phaseIncrement, "réaction " + def.name);
-
-        // Log DEF reposition
-                if (state.distanceReelle !== oldDistDef) {
-          log.push(line("reposition", `Distance ${oldDistDef} → ${state.distanceReelle}`));
-        } else {
-          log.push(line("reposition", `Distance ${state.distanceReelle} (inchangée)`));
-        }
-      } else {
-        // recuperation
-        def.endurance = clampEndurance(def.endurance + 1, def.enduranceInit);
-        advancePhase(1, "récupération " + def.name);
-
-        // Log DEF recovery
-        log.push(line("recovery", `Récupération (endurance: ${def.endurance}/${def.enduranceInit})`));
-      }
-    }
-
-    // --- CHECK HP ---
-    if (state.combatants.player.hp <= 0 || state.combatants.creature.hp <= 0) break;
-
-    // --- PHASE/MINUTE TRANSITION ---
-    if (state.phase >= state.nbPhaseParMinute) {
-      const oldPhase = state.phase;
-      state.minute++;
-      state.phase = 1;
-
-      // Debug: phase tracking
-      if (devMode) {
-        log.push(line("debug", `Phase passe de ${oldPhase} à ${state.phase}`));
-      }
-
-      if (state.minute > 20) break; // draw
-
-      // Recalculate NA_effectif for new minute
-      const newPlayerTactic = getTacticForMinute(state.combatants.player.tactic, state.minute, false);
-      state.combatants.player.naEffectif = computeNaEffectif(newPlayerTactic.NA, state.combatants.player.endurance);
-      const newCreatureTactic = getTacticForMinute(state.combatants.creature.tactic, state.minute, true);
-      state.combatants.creature.naEffectif = computeNaEffectif(newCreatureTactic.NA, state.combatants.creature.endurance);
-    }
+/**
+ * Point d'entrée principal du moteur de combat.
+ * Résout un combat complet entre un joueur et une créature.
+ *
+ * Accepte les données au format serveur (stats en français, equipment: null, etc.)
+ * et les normalise automatiquement vers le format interne.
+ *
+ * @param {object} playerData - Données du joueur (format serveur ou interne)
+ * @param {object} creatureData - Données de la créature (format serveur ou interne)
+ * @param {object|Function} [optionsOrRng] - Options {devMode, rollDie} ou fonction RNG
+ * @returns {CombatResult} {log, winner, playerHpFinal, creatureHpFinal, hpPlayer, hpCreature}
+ *
+ * Requirements: 15.2, 15.4, 16.1, 16.2, 16.3, 16.4
+ */
+export function resolveCombat(playerData, creatureData, optionsOrRng = {}) {
+  // Déterminer le RNG : soit une fonction passée directement, soit via options.rollDie
+  let rng = Math.random;
+  if (typeof optionsOrRng === 'function') {
+    rng = optionsOrRng;
+  } else if (optionsOrRng?.rollDie) {
+    // Adapter rollDie(min, max) en rng() → [0, 1)
+    rng = () => optionsOrRng.rollDie(0, 99) / 100;
   }
 
-  // --- DETERMINE WINNER ---
-  let winner;
-  if (state.combatants.player.hp <= 0) winner = "creature";
-  else if (state.combatants.creature.hp <= 0) winner = "player";
-  else winner = "draw"; // minute > 20
+  // Normaliser les données depuis le format serveur
+  const normalizedPlayer = normalizeCombatantData(playerData);
+  const normalizedCreature = normalizeCombatantData(creatureData);
 
-  // ─── Lignes de fin intégrées dans le log ──────────────────────────────────
+  // Valider et exécuter
+  validateInputs(normalizedPlayer, normalizedCreature);
+  const state = initCombatState(normalizedPlayer, normalizedCreature, COMBAT);
 
-  log.push(line("separator", "───── Fin du combat ─────"));
+  // Activer le mode debug si demandé
+  state.devMode = (typeof optionsOrRng === 'object' && optionsOrRng !== null && optionsOrRng.devMode === true) || false;
 
-  if (winner === "player") {
-    log.push(line("victory", `${state.combatants.player.name} remporte le combat ! (HP: ${state.combatants.player.hp}/${state.combatants.player.hpMax})`));
-  } else if (winner === "creature") {
-    log.push(line("defeat", `${state.combatants.player.name} est vaincu...`));
+  // ─── Phase début du combat ────────────────────────────────────────────────
+  log(state, 'separator', `=== Début du combat ===`);
+  // Presentation(C1) — commenté dans la spec
+  equipementCombattant(state.player, state);
+  presentationCombattant(state.creature, state);
+  equipementCombattant(state.creature, state);
+
+  const finalState = mainLoop(state, COMBAT, rng);
+
+  return {
+    log: finalState.log,
+    winner: finalState.result.winner,
+    // Format attendu par server/index.js
+    playerHpFinal: finalState.player.hp,
+    creatureHpFinal: finalState.creature.hp,
+    // Format interne (pour les tests)
+    hpPlayer: finalState.player.hp,
+    hpCreature: finalState.creature.hp
+  };
+}
+
+// ─── Présentation ───────────────────────────────────────────────────────────────
+
+/**
+ * Tranche — convertit une valeur en indice de tranche (1-5).
+ */
+export function tranche(valeur) {
+  if (valeur <= 7) return 1;
+  if (valeur <= 10) return 2;
+  if (valeur <= 13) return 3;
+  if (valeur <= 16) return 4;
+  return 5;
+}
+
+/**
+ * Presentation — affiche la description narrative d'un combattant
+ * à partir de ses caractéristiques et des matrices de presentation.json.
+ */
+export function presentationCombattant(combattant, state) {
+  const s = combattant.stats;
+
+  // calcul des scores composites
+  const robustesse = Math.floor((s.CON + s.TAI) / 2);
+  const rapidite = Math.floor((s.INT + s.VIT) / 2);
+  const presence = Math.floor((s.TAI + s.ADR) / 2);
+  const mentalOffensif = Math.floor((s.INT + s.VOL) / 2);
+  const letalite = Math.floor((s.FOR + s.ADR) / 2);
+  const mentalReactif = Math.floor((s.INT + s.VOL + s.VIT) / 3);
+  const maitriseEspace = Math.floor((s.ADR + (24 - s.TAI)) / 2);
+  const solidite = Math.floor((s.FOR + s.VOL + (24 - s.TAI)) / 3);
+  const pression = Math.floor((s.VIT + s.INT) / 2);
+  const anticipation = Math.floor((s.ADR + s.INT) / 2);
+  const tailleCm = 115 + s.TAI * 5;
+
+  // présentation
+  addLog(state, 'normal', `=== ${combattant.name} ===`);
+  addLog(state, 'normal', `${combattant.name} mesure ${tailleCm} cm`);
+  addLog(state, 'normal', presentation.MATRICE_PHYSIQUE[tranche(robustesse)][tranche(s.FOR)]);
+  addLog(state, 'normal', presentation.MATRICE_VIVACITE[tranche(rapidite)][tranche(presence)]);
+  addLog(state, 'normal', presentation.MATRICE_ATTAQUE[tranche(mentalOffensif)][tranche(letalite)]);
+  addLog(state, 'normal', presentation.MATRICE_ESQUIVE[tranche(mentalReactif)][tranche(maitriseEspace)]);
+  addLog(state, 'normal', presentation.MATRICE_PARADE[tranche(solidite)][tranche(s.ADR)]);
+  addLog(state, 'normal', presentation.MATRICE_INITIATIVE[tranche(s.VOL)][tranche(pression)]);
+  log(state, 'normal', presentation.MATRICE_RIPOSTE[tranche(s.VIT)][tranche(anticipation)]);
+}
+
+/**
+ * Equipement — affiche l'équipement d'un combattant.
+ */
+export function equipementCombattant(combattant, state) {
+  if (combattant.weapon) {
+    log(state, 'normal', `${combattant.name} combat avec ${combattant.weaponName} en main droite`);
+  }
+  if (combattant.weaponL) {
+    log(state, 'normal', `${combattant.name} porte ${combattant.weaponNameL} en main gauche`);
+  }
+  if (combattant.armor) {
+    log(state, 'normal', `${combattant.name} est protégé par ${combattant.armorName}`);
   } else {
-    log.push(line("draw", "Match nul — le combat se termine sans vainqueur."));
+    log(state, 'normal', `${combattant.name} combat sans armure`);
   }
-
-  return { log, playerHpFinal: state.combatants.player.hp, creatureHpFinal: state.combatants.creature.hp, winner };
 }

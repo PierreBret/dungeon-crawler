@@ -111,8 +111,13 @@ describe("Combat Integration Tests", () => {
       expect(["player", "creature", "draw"]).toContain(result.winner);
       expect(Array.isArray(result.log)).toBe(true);
       expect(result.log.length).toBeGreaterThan(0);
-      expect(result.playerHpFinal).toBeGreaterThanOrEqual(0);
-      expect(result.creatureHpFinal).toBeGreaterThanOrEqual(0);
+      if (result.winner === 'player') {
+        expect(result.playerHpFinal).toBeGreaterThanOrEqual(1);
+        expect(result.creatureHpFinal).toBeLessThan(1);
+      } else if (result.winner === 'creature') {
+        expect(result.creatureHpFinal).toBeGreaterThanOrEqual(1);
+        expect(result.playerHpFinal).toBeLessThan(1);
+      }
     });
 
     it("should work with all weapon types from weapons.json", () => {

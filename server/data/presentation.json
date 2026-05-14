@@ -1,0 +1,261 @@
+{
+  "MATRICE_PHYSIQUE": {
+    "1": {
+      "1": "Un corps chétif et fragile, il semble hors de sa place sur un champ de bataille",
+      "2": "Ses muscles sont maigres et son corps encaisse mal, chaque coup le rapproche du sol",
+      "3": "Sa musculature correcte ne compense pas une constitution alarmante",
+      "4": "Ses bras sont puissants mais son corps frêle ne peut absorber grand chose",
+      "5": "Une force brute impressionnante sur un corps qui ne peut pas la soutenir longtemps"
+    },
+    "2": {
+      "1": "Peu musclé et peu résistant, il s'épuise vite sous l'effort",
+      "2": "Son physique est ordinaire, ni menaçant ni particulièrement solide",
+      "3": "Sa musculature honnête peine à compenser une résistance limitée",
+      "4": "Ses muscles imposants tranchent avec une constitution décevante",
+      "5": "Sa puissance est réelle mais son corps peine à tenir la distance"
+    },
+    "3": {
+      "1": "Son endurance est correcte mais ses bras manquent cruellement de puissance",
+      "2": "Son physique est dans la moyenne, solide sans être impressionnant",
+      "3": "Un combattant au physique équilibré, ni remarquable ni défaillant",
+      "4": "Ses muscles puissants sont soutenus par une constitution correcte",
+      "5": "Sa force impressionnante est portée par un physique qui tient la route"
+    },
+    "4": {
+      "1": "Son corps encaisse remarquablement mais manque de puissance pour en tirer parti",
+      "2": "Sa résistance est solide, sa musculature commence à être à la hauteur",
+      "3": "Son physique robuste et sa force correcte en font un adversaire difficile à user",
+      "4": "Puissant et résistant, son corps est une arme en lui-même",
+      "5": "Sa force colossale est soutenue par une constitution remarquable"
+    },
+    "5": {
+      "1": "Son corps est un roc, ses bras sont ceux d'un enfant",
+      "2": "Sa résistance est exceptionnelle, sa force commence à être à sa mesure",
+      "3": "Son endurance hors norme combinée à une force solide en fait un adversaire éprouvant",
+      "4": "Puissant et quasiment inusable, il impose son physique à chaque échange",
+      "5": "Un colosse taillé dans la pierre, sa force et sa résistance forcent le respect"
+    }
+  },
+  "MATRICE_VIVACITE": {
+    "1": {
+      "1": "Lent à réagir et sans présence, il cède toujours l'initiative",
+      "2": "Son manque de réactivité et sa discrétion le condamnent à subir",
+      "3": "Il s'élance correctement mais sans conviction ni rapidité",
+      "4": "Sa présence impose mais son esprit lent gâche l'avantage",
+      "5": "Imposant et précis, il ne sait pourtant pas quand frapper"
+    },
+    "2": {
+      "1": "Il hésite trop et s'efface, l'initiative lui échappe souvent",
+      "2": "Ni assez vif ni assez présent, il subit le rythme adverse",
+      "3": "Sa présence correcte ne compense pas sa lenteur de décision",
+      "4": "Sa stature et sa précision sont réelles, sa réactivité le freine",
+      "5": "Une présence remarquable gâchée par une décision trop lente"
+    },
+    "3": {
+      "1": "Il décide vite mais son corps et sa présence ne suivent pas",
+      "2": "Sa vivacité est ordinaire, il prend l'initiative quand on la lui laisse",
+      "3": "Il s'impose sans éclat, prend l'initiative quand l'occasion se présente",
+      "4": "Sa présence physique solide est bien servie par une réactivité correcte",
+      "5": "Sa présence exceptionnelle est soutenue par une réactivité honnête"
+    },
+    "4": {
+      "1": "Vif d'esprit et rapide, son manque de présence le dessert",
+      "2": "Sa réactivité est bonne, sa présence encore insuffisante pour intimider",
+      "3": "Décisif et bien campé, il prend souvent l'initiative avec assurance",
+      "4": "Rapide à décider et difficile à ignorer, il dicte souvent le tempo",
+      "5": "Sa présence magistrale combinée à une réactivité solide en fait un initiateur redoutable"
+    },
+    "5": {
+      "1": "Foudroyant dans sa tête, invisible sur le terrain",
+      "2": "Sa vitesse de décision est stupéfiante, sa présence commence à suivre",
+      "3": "Il décide et agit en un éclair, sa présence correcte suffit à conclure",
+      "4": "Aussi fulgurant dans sa décision qu'imposant dans son exécution",
+      "5": "Avant même que l'adversaire réalise, le premier coup est parti"
+    }
+  },
+  "MATRICE_ATTAQUE": {
+    "1": {
+      "1": "Ses coups partent au hasard, sans force ni intention",
+      "2": "Ses frappes manquent de tout sauf d'imprévisibilité",
+      "3": "Son bras est honnête mais sa tête ne lui dicte rien d'utile",
+      "4": "Un bras redoutable que son esprit ne sait pas guider",
+      "5": "Ses coups sont dévastateurs mais tombent comme la foudre, sans direction"
+    },
+    "2": {
+      "1": "Il frappe comme il pense, mal et sans conviction",
+      "2": "Un combattant hésitant, ses attaques manquent de tranchant",
+      "3": "Sa létalité compense timidement un mental limité",
+      "4": "Une frappe dangereuse gâchée par un manque de discernement",
+      "5": "Ses coups sont terrifiants, son esprit peine encore à les placer"
+    },
+    "3": {
+      "1": "Il voit l'ouverture mais son bras ne répond pas",
+      "2": "Un attaquant ordinaire qui manque d'instinct offensif",
+      "3": "Ses attaques sont celles d'un soldat compétent, sans plus",
+      "4": "Une frappe solide au service d'un esprit tactique correct",
+      "5": "Son bras est redoutable, son sens du combat honnête"
+    },
+    "4": {
+      "1": "Son œil est vif mais son bras le trahit",
+      "2": "Fin stratège, ses frappes manquent encore de mordant",
+      "3": "Sa lecture du combat compense une frappe déjà solide",
+      "4": "Rapide à lire l'adversaire, prompt à exploiter la faille",
+      "5": "Un prédateur précis et calculé, dangereux à chaque échange"
+    },
+    "5": {
+      "1": "Un génie tactique handicapé par un corps qui ne suit pas",
+      "2": "Sa lecture du combat est magistrale, son exécution encore imparfaite",
+      "3": "Son intelligence de combat force le respect, sa frappe aussi",
+      "4": "Aussi brillant dans sa tête que dans son bras, un adversaire redoutable",
+      "5": "D'une létalité foudroyante, chaque frappe est calculée et placée au millimètre"
+    }
+  },
+  "MATRICE_ESQUIVE": {
+    "1": {
+      "1": "Lent et encombrant, il subit les coups sans pouvoir les éviter",
+      "2": "Son corps bouge à peine, son esprit ne l'y aide pas",
+      "3": "Ses pas sont corrects mais sa tête ne voit pas le danger venir",
+      "4": "Agile de corps mais incapable d'anticiper la moindre feinte",
+      "5": "Un félin dans ses mouvements, une pierre dans ses réactions"
+    },
+    "2": {
+      "1": "Il esquive par chance, son corps et son esprit se cherchent encore",
+      "2": "Ni assez vif ni assez lucide, il encaisse plus qu'il n'évite",
+      "3": "Sa lecture du danger est timide, ses déplacements ne compensent pas",
+      "4": "Son agilité promet mais son manque de lucidité le trahit souvent",
+      "5": "Ses déplacements sont remarquables, ses décisions trop lentes pour en tirer parti"
+    },
+    "3": {
+      "1": "Il voit le coup venir mais son corps refuse de répondre",
+      "2": "Un esquiveur ordinaire, ni élégant ni particulièrement efficace",
+      "3": "Il évite ce qu'il peut, sans génie mais sans faille majeure",
+      "4": "Ses déplacements précis compensent un mental correct",
+      "5": "Son agilité exceptionnelle compense un mental sans relief"
+    },
+    "4": {
+      "1": "Son œil est vif et son jugement sûr, son corps peine à suivre",
+      "2": "Sa lucidité est remarquable, ses déplacements restent perfectibles",
+      "3": "Il lit le combat avec acuité et se déplace avec efficacité",
+      "4": "Vif d'esprit et de corps, difficile à toucher",
+      "5": "Ses déplacements sont magistraux, guidés par un mental solide"
+    },
+    "5": {
+      "1": "Un stratège du combat incapable de mettre son corps en mouvement",
+      "2": "Son intelligence du danger est exceptionnelle, son corps commence à suivre",
+      "3": "Il anticipe chaque attaque avec brio, ses déplacements sont à la hauteur",
+      "4": "Aussi insaisissable dans sa tête que dans ses jambes, un cauchemar à toucher",
+      "5": "Fantomatique, il disparaît avant même que le coup ne parte"
+    }
+  },
+  "MATRICE_PARADE": {
+    "1": {
+      "1": "Sa garde est une formalité, il encaisse plus qu'il ne pare",
+      "2": "Ses mains s'agitent sans conviction sur un corps qui cède",
+      "3": "Ses gestes sont propres mais son ancrage est inexistant",
+      "4": "Une technique prometteuse sur un corps trop léger et trop peu déterminé",
+      "5": "Des mains de maître sur un corps qui ne peut pas suivre"
+    },
+    "2": {
+      "1": "Il pare par instinct, maladroitement, et s'en sort rarement",
+      "2": "Sa parade est hésitante, ni technique ni physique ne le sauvent",
+      "3": "Sa gestuelle correcte ne compense pas un ancrage insuffisant",
+      "4": "Ses mains précises peinent à compenser un corps et une volonté trop faibles",
+      "5": "Une dextérité remarquable gâchée par un manque d'ancrage"
+    },
+    "3": {
+      "1": "Il tient ses gardes à la force brute, sans finesse",
+      "2": "Sa parade est ordinaire, il survit plus qu'il ne contrôle",
+      "3": "Il tient ses gardes sans briller, solide sans être remarquable",
+      "4": "Une parade fiable, ses mains précises soutenues par un ancrage correct",
+      "5": "Ses parades sont précises et bien ancrées, un défenseur sérieux"
+    },
+    "4": {
+      "1": "Son ancrage est un roc, sa technique reste à construire",
+      "2": "Difficile à déséquilibrer, mais ses parades restent grossières",
+      "3": "Sa solidité et sa technique s'équilibrent pour une parade robuste",
+      "4": "Difficile à traverser, sa garde allie ancrage et précision",
+      "5": "Ses parades sont redoutables, précises et ancrées dans une solidité exemplaire"
+    },
+    "5": {
+      "1": "Un mur sans fenêtres, il absorbe tout mais ne dévie rien",
+      "2": "Son ancrage est impressionnant, sa technique commence à lui donner toute sa valeur",
+      "3": "Sa solidité est remarquable, ses mains lui donnent l'élégance qui manquait",
+      "4": "Un rempart difficile à franchir, sa technique magnifie une solidité hors norme",
+      "5": "Imprenable, sa garde est un chef d'œuvre d'ancrage et de précision"
+    }
+  },
+  "MATRICE_INITIATIVE": {
+    "1": {
+      "1": "Lent et sans conviction, il cède l'initiative au moindre obstacle",
+      "2": "Sa pression est timide et son mental fragile, l'adversaire reprend vite son souffle",
+      "3": "Il enchaîne correctement mais abandonne dès que ça résiste",
+      "4": "Son déferlement est impressionnant mais il craque mentalement sous la pression inverse",
+      "5": "Une tempête d'attaques qui s'effondre à la première difficulté"
+    },
+    "2": {
+      "1": "Il manque de rythme et de détermination pour maintenir l'avantage",
+      "2": "Sa pression et sa volonté sont insuffisantes pour verrouiller l'initiative",
+      "3": "Il tient le rythme un temps avant de laisser l'adversaire souffler",
+      "4": "Son intensité est réelle mais sa fragilité mentale finit par le trahir",
+      "5": "Son déferlement est redoutable mais sa volonté vacille sous l'effort"
+    },
+    "3": {
+      "1": "Sa détermination est solide mais son rythme trop lent pour maintenir la pression",
+      "2": "Sa volonté correcte ne compense pas un manque de rythme offensif",
+      "3": "Il maintient l'initiative sans briller, solide sans être étouffant",
+      "4": "Sa cadence soutenue est bien servie par une volonté sans faille apparente",
+      "5": "Son déferlement d'attaques est porté par un mental qui ne lâche pas"
+    },
+    "4": {
+      "1": "Sa détermination est admirable, son rythme trop faible pour en tirer parti",
+      "2": "Son focus est remarquable, sa cadence encore insuffisante pour étouffer l'adversaire",
+      "3": "Sa volonté solide et son rythme correct en font un adversaire qui ne lâche rien",
+      "4": "Déterminé et intense, il maintient une pression constante difficile à gérer",
+      "5": "Son déferlement implacable est porté par une volonté de fer, il ne laisse aucun répit"
+    },
+    "5": {
+      "1": "Une détermination absolue au service d'un rythme qui ne suit pas",
+      "2": "Son focus est total, son rythme commence à être à la hauteur de sa volonté",
+      "3": "Imperturbable et constant, son rythme solide finit par épuiser l'adversaire",
+      "4": "Sa volonté inébranlable combinée à une pression intense en font un adversaire éprouvant",
+      "5": "Inarrêtable, son déferlement d'attaques et sa volonté absolue ne laissent aucune chance de reprendre le souffle"
+    }
+  },
+  "MATRICE_RIPOSTE": {
+    "1": {
+      "1": "Les ouvertures lui échappent et son bras ne suit pas",
+      "2": "Il entrevoit parfois une faille mais n'a pas la vitesse pour l'exploiter",
+      "3": "Il lit correctement le combat mais réagit toujours trop tard",
+      "4": "Il voit tout, anticipe tout, et rate tout par manque de vitesse",
+      "5": "Un analyste du combat foudroyant, condamné à regarder les occasions passer"
+    },
+    "2": {
+      "1": "Il contre par instinct, rarement au bon moment et jamais au bon endroit",
+      "2": "Ses contre-attaques sont rares et peu convaincantes",
+      "3": "Il saisit parfois une opportunité sans vraiment savoir pourquoi",
+      "4": "Sa lecture du combat est bonne mais son exécution manque de rapidité",
+      "5": "Son anticipation est remarquable, sa vitesse d'exécution le pénalise encore"
+    },
+    "3": {
+      "1": "Il est rapide mais frappe dans le vide, faute de lecture",
+      "2": "Sa vitesse compense timidement une lecture du combat ordinaire",
+      "3": "Il contre quand il le faut, sans génie mais sans faille majeure",
+      "4": "Sa bonne lecture des failles est bien servie par une vitesse correcte",
+      "5": "Son anticipation exceptionnelle est soutenue par une vitesse honnête"
+    },
+    "4": {
+      "1": "Fulgurant mais aveugle, il contre au mauvais moment",
+      "2": "Sa rapidité est impressionnante, son placement encore perfectible",
+      "3": "Rapide et lucide, il saisit la plupart des ouvertures qui se présentent",
+      "4": "Vif et précis dans sa lecture, ses ripostes claquent au bon moment",
+      "5": "Son anticipation magistrale guidée par une vitesse redoutable, un contre-attaquant dangereux"
+    },
+    "5": {
+      "1": "Une vitesse stupéfiante au service d'un combattant qui ne voit pas les ouvertures",
+      "2": "Il est là avant le coup, mais pas toujours au bon endroit",
+      "3": "Sa vitesse d'exécution et sa lecture correcte en font un contre-attaquant solide",
+      "4": "Insaisissable en contre, son anticipation et sa vitesse se combinent parfaitement",
+      "5": "Ses ripostes sont foudroyantes, placées avec une précision chirurgicale avant même que l'adversaire réalise son erreur"
+    }
+  }
+}

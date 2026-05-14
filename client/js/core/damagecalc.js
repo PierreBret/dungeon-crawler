@@ -33,8 +33,8 @@ export function computeWeaponDamage(item, weaponDef, material, playerStats) {
   // nbTiers déduit du nombre de modèles
   const nbTiers  = weaponDef.models?.length ?? 1;
   const tier     = item.tier ?? 1;
-  const baseArme = weaponDef.damFirst +
-    (weaponDef.damLast - weaponDef.damFirst) * (tier - 1) / Math.max(nbTiers - 1, 1);
+  const baseArme = Math.floor(weaponDef.damFirst +
+    (weaponDef.damLast - weaponDef.damFirst) * (tier - 1) / Math.max(nbTiers - 1, 1));
 
   // ─── modMatériau ──────────────────────────────────────────────────────────
   const modMat = material.modMat ?? 1.0;

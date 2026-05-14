@@ -23,8 +23,6 @@ describe('Property 14: Damage formula', () => {
 
   // --- Generators ---
 
-  const MATERIALS_MOD = [1.0, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0];
-
   const arbWeaponDef = fc.record({
     damFirst: fc.integer({ min: 5, max: 30 }),
     damLast: fc.integer({ min: 30, max: 100 }),
@@ -57,9 +55,9 @@ describe('Property 14: Damage formula', () => {
 
   const arbTargetFamily = arbFamilyName;
 
-  // --- Property 1: baseArme formula ---
+  // --- Property 1: baseArme formula (Arrondi à 2 décimales) ---
 
-  it('baseArme = Math.floor(damFirst + (damLast - damFirst) × (tier - 1) / Math.max(nbTiers - 1, 1))', () => {
+  it('baseArme = Arrondi(damFirst + (damLast - damFirst) × (tier - 1) / Math.max(nbTiers - 1, 1), 2)', () => {
     fc.assert(
       fc.property(
         arbWeaponDef,
@@ -68,37 +66,38 @@ describe('Property 14: Damage formula', () => {
         function verifyBaseArmeFormula(weaponDef, weaponItem, attackerStats) {
           const result = computeDamage(weaponDef, weaponItem, attackerStats, 0, undefined);
           const nbTiers = weaponDef.models.length;
-          const expected = Math.floor(
+          const expected = Math.round((
             weaponDef.damFirst + (weaponDef.damLast - weaponDef.damFirst) * (weaponItem.tier - 1) / Math.max(nbTiers - 1, 1)
-          );
-          expect(result.baseArme).toBe(expected);
+          ) * 100) / 100;
+          expect(result.baseArme).toBeCloseTo(expected, 10);
         }
       ),
       { numRuns: 100 }
     );
   });
 
-  // --- Property 2: modMateriau from discrete table ---
+  // --- Property 2: modMateriau from formula 1 + (materiau - 1) * 0.150 ---
 
-  it('modMateriau is from table [1.0, 1.25, 1.375, 1.5, 1.625, 1.75, 1.875, 2.0] indexed by material', () => {
+  it('modMateriau = 1 + (material) * 0.150 (material 0-7 mapped to materiau 1-8)', () => {
     fc.assert(
       fc.property(
         arbWeaponDef,
         arbWeaponItem,
         arbAttackerStats,
-        function verifyModMateriauTable(weaponDef, weaponItem, attackerStats) {
+        function verifyModMateriauFormula(weaponDef, weaponItem, attackerStats) {
           const result = computeDamage(weaponDef, weaponItem, attackerStats, 0, undefined);
-          const expected = MATERIALS_MOD[weaponItem.material];
-          expect(result.modMateriau).toBe(expected);
+          const materiau = weaponItem.material + 1; // 0-7 → 1-8
+          const expected = 1 + (materiau - 1) * 0.150;
+          expect(result.modMateriau).toBeCloseTo(expected, 10);
         }
       ),
       { numRuns: 100 }
     );
   });
 
-  // --- Property 3: coefStats formula ---
+  // --- Property 3: coefStats formula (Arrondi à 2 décimales) ---
 
-  it('coefStats = 1 + Σ((stat - 12) × 0.02 × weight) for each stat', () => {
+  it('coefStats = Arrondi(1 + Σ((stat - 12) × 0.02 × weight), 2) for each stat', () => {
     fc.assert(
       fc.property(
         arbWeaponDef,
@@ -106,12 +105,13 @@ describe('Property 14: Damage formula', () => {
         arbAttackerStats,
         function verifyCoefStatsFormula(weaponDef, weaponItem, attackerStats) {
           const result = computeDamage(weaponDef, weaponItem, attackerStats, 0, undefined);
-          const expected = 1
+          const raw = 1
             + (attackerStats.force - 12) * 0.02 * weaponDef.weightFO
             + (attackerStats.taille - 12) * 0.02 * weaponDef.weightTA
             + (attackerStats.intelligence - 12) * 0.02 * weaponDef.weightIN
             + (attackerStats.vitesse - 12) * 0.02 * weaponDef.weightVI
             + (attackerStats.adresse - 12) * 0.02 * weaponDef.weightAD;
+          const expected = Math.round(raw * 100) / 100;
           expect(result.coefStats).toBeCloseTo(expected, 10);
         }
       ),
@@ -119,9 +119,9 @@ describe('Property 14: Damage formula', () => {
     );
   });
 
-  // --- Property 4: modAffinite = 1 + affinities[targetFamily] / 100 (default 1.0 when missing) ---
+  // --- Property 4: modAffinite = Arrondi(1 + affinities[targetFamily] / 100, 2) ---
 
-  it('modAffinite = 1 + affinities[targetFamily] / 100 when targetFamily is provided', () => {
+  it('modAffinite = Arrondi(1 + affinities[targetFamily] / 100, 2) when targetFamily is provided', () => {
     fc.assert(
       fc.property(
         arbWeaponDef,
@@ -131,7 +131,7 @@ describe('Property 14: Damage formula', () => {
         function verifyModAffiniteWithFamily(weaponDef, weaponItem, attackerStats, targetFamily) {
           const result = computeDamage(weaponDef, weaponItem, attackerStats, 0, targetFamily);
           const affinityValue = weaponItem.affinities[targetFamily] ?? 0;
-          const expected = 1 + affinityValue / 100;
+          const expected = Math.round((1 + affinityValue / 100) * 100) / 100;
           expect(result.modAffinite).toBeCloseTo(expected, 10);
         }
       ),

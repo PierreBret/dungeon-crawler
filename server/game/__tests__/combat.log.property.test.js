@@ -104,12 +104,12 @@ describe('Property 17: Log integrity', () => {
     };
   }
 
-  // Valid log types (22 types as per Req 16.1)
+  // Valid log types (23 types as per Req 16.1)
   const VALID_LOG_TYPES = [
     "separator", "initiative", "action", "attack", "miss",
     "dodge_attempt", "dodge", "parry_attempt", "parry",
     "defense_fail", "riposte_attempt", "riposte", "riposte_fail",
-    "hit", "armor", "reposition", "recovery",
+    "damage_raw", "hit", "armor", "reposition", "recovery",
     "noAction", "victory", "defeat", "draw", "debug"
   ];
 
@@ -141,7 +141,7 @@ describe('Property 17: Log integrity', () => {
 
   // --- Property 2: Every type is one of the 23 valid types ---
 
-  it('every log type is one of the 22 valid types (Req 16.1)', () => {
+  it('every log type is one of the 23 valid types (Req 16.1)', () => {
     fc.assert(
       fc.property(
         arbPlayerData,

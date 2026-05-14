@@ -87,8 +87,19 @@ function drawCombatLog(ctx, combatState, player, W, H) {
   const logX     = padding;
   const logY     = 88;
   const maxLines = Math.floor((H - logY - 60) / lineH);
-  const start    = Math.max(0, currentIdx - maxLines + 1);
-  const visible  = log.slice(start, currentIdx + 1);
+
+  // Expand multi-line entries into individual display lines
+  const expandedLines = [];
+  for (let idx = 0; idx <= currentIdx && idx < log.length; idx++) {
+    const entry = log[idx];
+    const lines = entry.text.split('\n');
+    for (const line of lines) {
+      expandedLines.push({ type: entry.type, text: line });
+    }
+  }
+
+  const start   = Math.max(0, expandedLines.length - maxLines);
+  const visible = expandedLines.slice(start);
 
   for (let i = 0; i < visible.length; i++) {
     const entry = visible[i];
