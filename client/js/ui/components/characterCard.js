@@ -109,5 +109,21 @@ export function drawPlayerCard(ctx, player, frameX, frameY, blockWidth, isSelect
   ctx.textAlign = "right";
   ctx.fillText(`Niveau ${player.etage ?? 1}`, frameX + blockWidth - padding, currentY);
 
+  currentY += lineHeight;
+
+  // ─── HP ───────────────────────────────────────────────────────────────────
+
+  ctx.font      = THEME.components.statLabel.font;
+  ctx.fillStyle = THEME.components.statLabel.color;
+  ctx.textAlign = "left";
+  ctx.fillText("HP", contentX, currentY);
+
+  ctx.font      = THEME.components.statValue.font;
+  ctx.fillStyle = THEME.components.statValue.color;
+  ctx.textAlign = "right";
+  const hp    = player.hp ?? 0;
+  const hpMax = player.hpMax ?? 0;
+  ctx.fillText(`${hp}/${hpMax}`, frameX + blockWidth - padding, currentY);
+
   ctx.textAlign = "left";
 }

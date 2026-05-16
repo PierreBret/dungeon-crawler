@@ -3,6 +3,8 @@
   Logique métier du joueur — côté serveur uniquement.
 */
 
+import { COMBAT } from "./combatConfig.js";
+
 // ─── Configuration ────────────────────────────────────────────────────────────
 
 const STATS_CONFIG = {
@@ -89,9 +91,14 @@ export function createPlayer(candidate, dungeon) {
   const pos   = getStartingPosition(dungeon);
   const stats = candidate.stats ?? generateStats();
 
-  // Formules définies dans le GAME_DESIGN
-  const hp        = stats.constitution * 2 + stats.taille;
-  const endurance = stats.constitution + stats.volonté;
+  // HP max : (CON×19 + TAI×5 + VOL×2) / divisor — même formule que le moteur de combat
+  const hpRaw = stats.constitution * COMBAT.hpFormula.CON
+              + stats.taille * COMBAT.hpFormula.TAI
+              + stats.volonté * COMBAT.hpFormula.VOL;
+  const hpMax = Math.floor(hpRaw / (COMBAT.hpFormula.divisor ?? 1));
+
+  // Endurance max : (FOR + CON + VOL) × 3
+  const endMax = (stats.force + stats.constitution + stats.volonté) * COMBAT.endFormula.multiplier;
 
   return {
     name:       candidate.name       ?? randomName(),
@@ -113,10 +120,10 @@ export function createPlayer(candidate, dungeon) {
     },
 
     // Ressources de combat
-    hp,
-    hpMax:        hp,
-    endurance,
-    enduranceMax: endurance
+    hp:           hpMax,
+    hpMax:        hpMax,
+    endurance:    endMax,
+    enduranceMax: endMax
   };
 }
 

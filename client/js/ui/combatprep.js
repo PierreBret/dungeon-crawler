@@ -99,6 +99,20 @@ function drawCreaturePanel(ctx, creature, x, y, w, h, padding) {
     cy += 26;
   }
 
+  // HP créature (toujours plein)
+  cy += 8;
+  const cStats = creature.stats;
+  const cVol   = cStats.volonté ?? cStats.volonte ?? 0;
+  const cHpMax = Math.floor((cStats.constitution * 19 + cStats.taille * 5 + cVol * 2) / 3);
+  ctx.font      = THEME.components.statLabel.font;
+  ctx.fillStyle = THEME.components.statLabel.color;
+  ctx.textAlign = "left";
+  ctx.fillText("HP", cx, cy);
+  ctx.font      = THEME.components.statValue.font;
+  ctx.fillStyle = THEME.components.statValue.color;
+  ctx.textAlign = "right";
+  ctx.fillText(`${cHpMax}/${cHpMax}`, x + w - padding, cy);
+
   ctx.textAlign = "left";
 }
 
@@ -118,6 +132,14 @@ function drawPlayerPanel(ctx, combatState, player, x, y, w, h, padding) {
   ctx.font      = THEME.font.title;
   ctx.fillText("Préparation", cx, cy);
   cy += 40;
+
+  // HP joueur
+  const hp    = player.hp ?? 0;
+  const hpMax = player.hpMax ?? 0;
+  ctx.fillStyle = THEME.text.secondary;
+  ctx.font      = THEME.font.mono;
+  ctx.fillText(`HP : ${hp}/${hpMax}`, cx, cy);
+  cy += 28;
 
   // Équipement
   ctx.fillStyle = THEME.text.secondary;

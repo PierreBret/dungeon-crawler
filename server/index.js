@@ -260,14 +260,12 @@ io.on("connection", (socket) => {
 
       const creatureWeaponDef = weapons.find(w => w.code === creatureDef.equipment?.rightHand?.code);
 
-      // HP joueur depuis BDD (ou calculé si première fois)
+      // HP joueur depuis BDD (0 = premier combat → le moteur utilisera hpMax)
       const character  = dbGetCharacter(session.runId);
-      const playerHp   = character.hp > 0
-        ? character.hp
-        : session.player.stats.constitution * 2 + session.player.stats.taille;
+      const playerHp   = character.hp;
 
-      // HP créature
-      const creatureHp = creatureDef.stats.constitution * 2 + creatureDef.stats.taille;
+      // HP créature (toujours plein — le moteur utilisera hpMax)
+      const creatureHp = 0;
 
       // Arme équipée du joueur
       const inventory       = dbGetInventory(session.runId);
@@ -315,8 +313,10 @@ io.on("connection", (socket) => {
       const options = { devMode: DEV_MODE };
       const result = resolveCombat(playerData, creatureData, options);
 
-      // Mettre à jour HP joueur en BDD
+      // Mettre à jour HP joueur en BDD et en session
       dbUpdateCharacterHpEndurance(session.runId, result.playerHpFinal, character.endurance ?? 0);
+      session.player.hp    = result.playerHpFinal;
+      session.player.hpMax = result.playerHpMax;
 
       // Victoire — marquer créature vaincue + drop
       let drop = null;
@@ -347,8 +347,12 @@ io.on("connection", (socket) => {
         ok:              true,
         log:             result.log,
         winner:          result.winner,
+        playerHpStart:   result.playerHpStart,
         playerHpFinal:   result.playerHpFinal,
+        playerHpMax:     result.playerHpMax,
+        creatureHpStart: result.creatureHpStart,
         creatureHpFinal: result.creatureHpFinal,
+        creatureHpMax:   result.creatureHpMax,
         drop
       });
 

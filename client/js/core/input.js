@@ -185,8 +185,8 @@ function launchCombat(state) {
       response.drop.matName   = MATERIALS[response.drop.material]?.name ?? "?";
     }
 
-    const playerHpStart   = state.player.stats.constitution * 2 + state.player.stats.taille;
-    const creatureHpStart = combat.creature.stats.constitution * 2 + combat.creature.stats.taille;
+    const playerHpStart   = response.playerHpStart ?? response.playerHpMax ?? (state.player.stats.constitution * 2 + state.player.stats.taille);
+    const creatureHpStart = response.creatureHpStart ?? response.creatureHpMax ?? (combat.creature.stats.constitution * 2 + combat.creature.stats.taille);
 
     state.combat = {
       ...combat,
@@ -194,10 +194,11 @@ function launchCombat(state) {
       log:              response.log,
       winner:           response.winner,
       playerHpStart,
+      playerHpMax:      response.playerHpMax ?? playerHpStart,
       playerHpFinal:    response.playerHpFinal,
       playerHpCurrent:  playerHpStart,
       creatureHpStart,
-      creatureHpCurrent: creatureHpStart,
+      creatureHpMax:    response.creatureHpMax ?? creatureHpStart,
       creatureHpFinal:  response.creatureHpFinal,
       currentLineIndex: 0,
       confirmQuit:      false,
@@ -232,6 +233,10 @@ function handleCombatViewInput(state, e) {
     if (e.key === "Enter") {
       if (combat.quitChoice === 0) {
         // Confirme — quitter
+        // Mettre à jour les HP du joueur
+        state.player.hp    = combat.playerHpFinal;
+        state.player.hpMax = combat.playerHpMax ?? state.player.hpMax;
+
         if (combat.winner === "player") {
           state.screen = SCREENS.DUNGEON;
           state.combat = null;
@@ -254,7 +259,12 @@ function handleCombatViewInput(state, e) {
   if (e.key !== "Enter") return;
  
   if (!atEnd) {
-    combat.currentLineIndex = (combat.currentLineIndex ?? 0) + 1;
+    // Avancer jusqu'à la prochaine ligne vide (marqueur de flushLogs)
+    let idx = (combat.currentLineIndex ?? 0) + 1;
+    while (idx < log.length - 1 && log[idx].text !== '') {
+      idx++;
+    }
+    combat.currentLineIndex = idx;
     return;
   }
  

@@ -17,24 +17,7 @@ import { THEME } from "../core/theme.js";
 
 const LINE_COLORS = {
   separator:       THEME.text.accent,
-  vivacite:        THEME.text.muted,
-  initiative:      THEME.text.secondary,
-  attack:          THEME.text.secondary,
-  miss:            THEME.text.muted,
-  dodge_attempt:   THEME.text.muted,
-  parry_attempt:   THEME.text.muted,
-  dodge:           THEME.text.secondary,
-  parry:           THEME.text.secondary,
-  defense_fail:    THEME.text.secondary,
-  armor:           THEME.text.muted,
-  hit:             THEME.text.primary,
-  riposte_attempt: THEME.text.muted,
-  init_contest:    THEME.text.muted,
-  riposte:         THEME.text.accent,
-  riposte_fail:    THEME.text.muted,
-  noAction:        THEME.text.muted,
-  victory:         THEME.text.accent,
-  defeat:          THEME.text.primary
+  hp_loss:         THEME.text.accent
 };
 
 // ─── Draw principal ───────────────────────────────────────────────────────────
@@ -74,10 +57,13 @@ function drawCombatLog(ctx, combatState, player, W, H) {
   const playerHp   = computeCurrentHp(log, currentIdx, player.name,                    combatState.playerHpStart);
   const creatureHp = computeCurrentHp(log, currentIdx, combatState.creature?.nameFr,   combatState.creatureHpStart);
 
+  const playerHpMax   = combatState.playerHpMax ?? combatState.playerHpStart;
+  const creatureHpMax = combatState.creatureHpMax ?? combatState.creatureHpStart;
+
   ctx.font      = THEME.font.mono;
   ctx.fillStyle = THEME.text.secondary;
   ctx.fillText(
-    `${player.name} HP: ${playerHp}   |   ${combatState.creature?.nameFr} HP: ${creatureHp}`,
+    `${player.name} HP: ${playerHp}/${playerHpMax}   |   ${combatState.creature?.nameFr} HP: ${creatureHp}/${creatureHpMax}`,
     W / 2, 50
   );
 
@@ -141,9 +127,8 @@ function computeCurrentHp(log, currentIdx, name, startHp) {
   let hp = startHp ?? "?";
   for (let i = 0; i <= currentIdx && i < log.length; i++) {
     const entry = log[i];
-    if ((entry.type === "hit" || entry.type === "riposte" || entry.type === "victory") &&
-        entry.text.includes(name) && entry.text.includes("HP:")) {
-      const match = entry.text.match(/HP:\s*(\d+)/);
+    if (entry.text.includes(name) && entry.text.includes("HP:")) {
+      const match = entry.text.match(/HP:\s*(-?\d+)/);
       if (match) hp = parseInt(match[1]);
     }
   }

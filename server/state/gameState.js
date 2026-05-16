@@ -42,7 +42,9 @@ class GameSession {
         stats:         this.player.stats,
         position:      this.player.position,
         etage:         this.etage,
-        augmentations: this.augmentations
+        augmentations: this.augmentations,
+        hp:            this.player.hp ?? 0,
+        hpMax:         this.player.hpMax ?? 0
       },
       screen:    this.screen,
       turn:      this.turn,

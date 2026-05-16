@@ -1,5 +1,6 @@
 ---
 inclusion: auto
+description: Règles d'implémentation stricte des specs et pseudo-code fournis par l'utilisateur
 ---
 
 # Règle : Implémentation stricte des specs

@@ -21,6 +21,11 @@ const presentation = JSON.parse(
   readFileSync(join(__dirname, "../data/presentation.json"), "utf8")
 );
 
+// armors.json — référentiel des pièces d'armure par slot et tier
+const armors = JSON.parse(
+  readFileSync(join(__dirname, "../data/armors.json"), "utf8")
+);
+
 // ─── Normalisation en pourcentage ──────────────────────────────────────────────
 
 /**
@@ -140,29 +145,30 @@ export function rollSkill(effectiveSkill, fatigue, rng) {
 }
 
 /**
- * Log — pousse une entrée de log (toujours visible).
+ * log — pousse une entrée dans le buffer (visible au prochain flushLogs).
  */
 function log(state, type, text) {
-  if (state.logBuffer.length > 0) {
-    const combined = [...state.logBuffer.map(e => e.text), text].join('\n');
-    state.logBuffer = [];
-    state.log.push({ type, text: combined });
-  } else {
-    state.log.push({ type, text });
-  }
-}
-
-function addLog(state, type, text) {
   state.logBuffer.push({ type, text });
 }
 
 /**
- * LogDev — pousse une entrée de log uniquement si devMode est actif.
+ * logDev — pousse une entrée de log uniquement si devMode est actif.
  */
 function logDev(state, type, text) {
   if (state.devMode) {
     log(state, type, text);
   }
+}
+
+/**
+ * flushLogs — transfère toutes les entrées du buffer vers state.log,
+ * puis vide le buffer. Conforme au pseudo-code : flushlogs() sans argument.
+ */
+function flushLogs(state) {
+  for (const entry of state.logBuffer) {
+    state.log.push(entry);
+  }
+  state.logBuffer = [];
 }
 
 /**
@@ -194,7 +200,13 @@ function testEndurance(combatant, state, rng) {
     logDev(state, 'debug', `(Endurance : ${combatant.endurance} / ${combatant.endMax})`);
     combatant.fatigue = 15;
     if (combatant.naCap > 4) {
-      log(state, 'fatigue', `${name} ralentit le rythme`);
+      const messages = [
+        `${name} ralentit le rythme`,
+        `${name} se préserve`,
+        `${name} réduit son activité`
+      ];
+      const index = Math.floor(rng() * messages.length);
+      log(state, 'fatigue', messages[index]);
       logDev(state, 'debug', `(Niveau d'activité : ${combatant.naCap} → 4)`);
       combatant.naCap = 4;
     }
@@ -203,7 +215,13 @@ function testEndurance(combatant, state, rng) {
     logDev(state, 'debug', `(Endurance : ${combatant.endurance} / ${combatant.endMax})`);
     combatant.fatigue = 10;
     if (combatant.naCap > 6) {
-      log(state, 'fatigue', `${name} ralentit le rythme`);
+      const messages = [
+        `${name} ralentit le rythme`,
+        `${name} se préserve`,
+        `${name} réduit son activité`
+      ];
+      const index = Math.floor(rng() * messages.length);
+      log(state, 'fatigue', messages[index]);
       logDev(state, 'debug', `(Niveau d'activité : ${combatant.naCap} → 6)`);
       combatant.naCap = 6;
     }
@@ -212,7 +230,13 @@ function testEndurance(combatant, state, rng) {
     logDev(state, 'debug', `(Endurance : ${combatant.endurance} / ${combatant.endMax})`);
     combatant.fatigue = 5;
     if (combatant.naCap > 8) {
-      log(state, 'fatigue', `${name} ralentit le rythme`);
+      const messages = [
+        `${name} ralentit le rythme`,
+        `${name} se préserve`,
+        `${name} réduit son activité`
+      ];
+      const index = Math.floor(rng() * messages.length);
+      log(state, 'fatigue', messages[index]);
       logDev(state, 'debug', `(Niveau d'activité : ${combatant.naCap} → 8)`);
       combatant.naCap = 8;
     }
@@ -246,28 +270,18 @@ export function computeDefenseCost(na, surcout) {
   return na + surcout;
 }
 
-/**
- * Applique la récupération d'endurance.
- * @param {number} currentEndurance - Endurance courante
- * @param {number} endMax - Endurance maximale
- * @param {object} config - COMBAT config (for gainRecuperation)
- * @returns {number} Nouvelle endurance (min(currentEndurance + gain, endMax))
- *
- * Requirements: 6.7
- */
-export function applyRecovery(currentEndurance, endMax, config) {
-  return Math.min(currentEndurance + config.gainRecuperation, endMax);
-}
-
 // ─── Phase de Vivacité ─────────────────────────────────────────────────────────
 
 /**
  * Phase de Vivacité — détermine qui est ATT et qui est DEF pour la minute.
  *
- * 1. Effectue un jet de Vivacité pour chaque combattant via rollSkill
- * 2. Compare les qualités : la plus élevée désigne ATT
- * 3. En cas d'égalité stricte, départage par tirage aléatoire (rng() < 0.5)
- * 4. Ajoute une entrée de log indiquant le résultat
+ * Formule : VIVACITYQUALITY = VIVACITY - D100 + ALTERNANCE - FATIGUE
+ *
+ * 1. Effectue un jet D100 pour chaque combattant
+ * 2. Applique le bonus d'alternance (COMBAT.alternance) au combattant qui était DEF
+ * 3. Compare les qualités : la plus élevée désigne ATT
+ * 4. Si les deux qualités sont < 0, relance (les combattants cherchent une ouverture)
+ * 5. Ajoute une entrée de log indiquant le résultat
  *
  * @param {CombatState} state - État courant du combat
  * @param {Function} rng - Générateur aléatoire
@@ -276,10 +290,20 @@ export function applyRecovery(currentEndurance, endMax, config) {
  * Requirements: 9.1, 9.2, 9.3, 9.4
  */
 export function phaseVivacite(state, rng) {
+  // Aiguillage enchaînement initiative & riposte
+  // si NEXTPHASE == Phase d'attaque alors NEXTPHASE = null, goto Phase d'attaque
+  if (state.nextPhase === 'attaque') {
+    state.nextPhase = null;
+    return state;
+  }
+
   const pName = state.player.name;
   const cName = state.creature.name;
 
+  let safetyCounter = 0;
   while (true) {
+    safetyCounter++;
+
     // Jets de vivacité
     const playerRoll = rollSkill(state.player.effective.vivacite, state.player.fatigue, rng);
     const creatureRoll = rollSkill(state.creature.effective.vivacite, state.creature.fatigue, rng);
@@ -288,18 +312,32 @@ export function phaseVivacite(state, rng) {
     let c2Quality = creatureRoll.quality;
 
     // Alternance
+    let c1Alternance = 0;
+    let c2Alternance = 0;
     if (state.attacker === 'player') {
-      c2Quality = c2Quality + COMBAT.alternance;
+      c2Alternance = COMBAT.alternance;
     } else if (state.attacker === 'creature') {
-      c1Quality = c1Quality + COMBAT.alternance;
+      c1Alternance = COMBAT.alternance;
     }
+    c1Quality = c1Quality + c1Alternance;
+    c2Quality = c2Quality + c2Alternance;
 
-    log(state, 'initiative', `${pName} vivacité : ${c1Quality} / ${cName} vivacité : ${c2Quality}`);
-    logDev(state, 'debug', `(${pName} — Vivacité: ${state.player.effective.vivacite} | D100: ${playerRoll.d100} | Fatigue: ${state.player.fatigue})`);
-    logDev(state, 'debug', `(${cName} — Vivacité: ${state.creature.effective.vivacite} | D100: ${creatureRoll.d100} | Fatigue: ${state.creature.fatigue})`);
+    logDev(state, 'debug', `(${pName} — Vivacité: ${state.player.effective.vivacite} | D100: ${playerRoll.d100} | Alternance: ${c1Alternance} | Fatigue: ${state.player.fatigue})`);
+    logDev(state, 'debug', `(${cName} — Vivacité: ${state.creature.effective.vivacite} | D100: ${creatureRoll.d100} | Alternance: ${c2Alternance} | Fatigue: ${state.creature.fatigue})`);
 
     if (c1Quality < 0 && c2Quality < 0) {
+      // Sécurité : après 100 tentatives, forcer la résolution
+      if (safetyCounter >= 100) {
+        if (c1Quality >= c2Quality) {
+          state.attacker = 'player';
+        } else {
+          state.attacker = 'creature';
+        }
+        break;
+      }
       log(state, 'initiative', `Les deux combattants cherchent une ouverture dans les défenses de leur adversaire`);
+      log(state, 'initiative', '');
+      flushLogs(state);
       continue; // goto Phase de vivacité
     }
 
@@ -323,34 +361,6 @@ export function phaseVivacite(state, rng) {
   }
 
   return state;
-}
-
-// ─── Gestion de la distance ────────────────────────────────────────────────────
-
-/**
- * Calcule la nouvelle distance après repositionnement.
- *
- * 1. Distance souhaitée = 11 - EN (plage résultante : 1 à 10)
- * 2. Déplacement max = floor(NA / 2)
- * 3. diff = desiredDist - currentDist
- * 4. move = sign(diff) × min(|diff|, maxMove)
- * 5. Résultat borné dans [distanceMin, distanceMax]
- *
- * @param {number} currentDist - Distance actuelle [1, 10]
- * @param {number} en - Engagement tactique [1, 10]
- * @param {number} na - Niveau d'activité effectif
- * @param {object} config - COMBAT config
- * @returns {number} Nouvelle distance [1, 10]
- *
- * Requirements: 10.1, 10.2, 10.3
- */
-export function computeMovement(currentDist, en, na, config) {
-  const desiredDist = 11 - en;
-  const maxMove = Math.floor(na / 2);
-  const diff = desiredDist - currentDist;
-  const move = Math.sign(diff) * Math.min(Math.abs(diff), maxMove);
-  const newDist = currentDist + move;
-  return Math.max(config.distanceMin, Math.min(config.distanceMax, newDist));
 }
 
 // ─── Phase de Positionnement ───────────────────────────────────────────────────
@@ -387,7 +397,7 @@ export function phasePositionnement(state) {
   if (distanceCible === state.distance) {
     logDev(state, 'debug', `(${att.name} est déjà à bonne distance | Distance : ${state.distance} | Distance cible : ${distanceCible})`);
   } else if (nouvelleDistance === state.distance) {
-    log(state, 'reposition', `${att.name} reste sur ses appuis`);
+    log(state, 'reposition', `${att.name} consolide ses appuis`);
     logDev(state, 'debug', `(Distance : ${state.distance} | Distance cible : ${distanceCible} | Pas : ${pas})`);
   } else if (nouvelleDistance < state.distance) {
     log(state, 'reposition', `${att.name} se rapproche de son adversaire`);
@@ -457,8 +467,11 @@ export function phaseAttaque(state, rng) {
     logDev(state, 'debug', `(${att.name} Endurance : ${att.endurance} | ${def.name} Endurance : ${def.endurance})`);
 
     // TEMPO = TEMPO + 1
-    logDev(state, 'debug', `(Tempo ${state.tempo} → ${state.tempo + 1})`);
+    logDev(state, 'debug', `Tempo ${state.tempo} → ${state.tempo + 1})`);
     state.tempo += 1;
+
+    log(state, 'recovery', '');
+    flushLogs(state);
 
     // goto Phase de vivacité
     state.skipToNextTempo = true;
@@ -485,7 +498,7 @@ export function phaseAttaque(state, rng) {
     logDev(state, 'debug', `(Endurance : ${att.endurance} / ${att.endMax} | Coût attaque : ${attackCost})`);
 
     // TEMPO = TEMPO + ATT.WEAPON.DIST
-    logDev(state, 'debug', `(Tempo ${state.tempo} → ${state.tempo + att.weapon.dist})`);
+    logDev(state, 'debug', `Tempo ${state.tempo} → ${state.tempo + att.weapon.dist})`);
     state.tempo += att.weapon.dist;
 
     // goto Phase de riposte (géré par la boucle principale)
@@ -498,58 +511,13 @@ export function phaseAttaque(state, rng) {
     logDev(state, 'debug', `(Endurance : ${att.endurance} / ${att.endMax} | Coût attaque : ${attackCost})`);
 
     // TEMPO = TEMPO + ATT.WEAPON.DIST
-    logDev(state, 'debug', `(Tempo ${state.tempo} → ${state.tempo + att.weapon.dist})`);
+    logDev(state, 'debug', `Tempo ${state.tempo} → ${state.tempo + att.weapon.dist})`);
     state.tempo += att.weapon.dist;
 
     // goto Phase de défense (géré par la boucle principale)
   }
 
   return state;
-}
-
-// ─── Sélection de défense ─────────────────────────────────────────────────────
-
-/**
- * Sélectionne la meilleure défense payable.
- *
- * Logique :
- * 1. Si esquiveEff > paradeEff → préférer esquive, fallback = parade
- * 2. Sinon → préférer parade, fallback = esquive
- * 3. Si endurance >= coût de la préférée → retourner la préférée
- * 4. Sinon si endurance >= coût du fallback → retourner le fallback
- * 5. Sinon → encaissement direct (coût 0)
- *
- * @param {number} esquiveEff - Esquive effective [1, 99]
- * @param {number} paradeEff - Parade effective [1, 99]
- * @param {number} endurance - Endurance courante
- * @param {number} coutEsquive - Coût d'endurance de l'esquive
- * @param {number} coutParade - Coût d'endurance de la parade
- * @returns {{type: 'esquive'|'parade'|'encaissement', cost: number}}
- *
- * Requirements: 11.1, 11.2, 11.5
- */
-export function selectDefense(esquiveEff, paradeEff, endurance, coutEsquive, coutParade) {
-  let preferred, fallback, costPreferred, costFallback;
-
-  if (esquiveEff > paradeEff) {
-    preferred = 'esquive';
-    fallback = 'parade';
-    costPreferred = coutEsquive;
-    costFallback = coutParade;
-  } else {
-    preferred = 'parade';
-    fallback = 'esquive';
-    costPreferred = coutParade;
-    costFallback = coutEsquive;
-  }
-
-  if (endurance >= costPreferred) {
-    return { type: preferred, cost: costPreferred };
-  }
-  if (endurance >= costFallback) {
-    return { type: fallback, cost: costFallback };
-  }
-  return { type: 'encaissement', cost: 0 };
 }
 
 // ─── Phase de Défense ─────────────────────────────────────────────────────────
@@ -634,7 +602,6 @@ export function phaseDefense(state, rng) {
       logDev(state, 'debug', `(Coût endurance : ${coutParade} | Endurance : ${def.endurance} / ${def.endMax})`);
     }
   }
-
   return state;
 }
 
@@ -692,60 +659,6 @@ export function WeaponModAff(WEAPON, COMBATTANT) {
   if (COMBATTANT.type == "undead")       AFFINITY = WEAPON.aff_undead;
   if (COMBATTANT.type == "reptilien")    AFFINITY = WEAPON.aff_reptilien;
   return Math.round((AFFINITY / 100 + 1) * 100) / 100;
-}
-
-/**
- * computeDamage — wrapper pour les tests property existants.
- * Adapte la signature (weaponDef, weaponItem, attackerStats, armorReduction, targetFamily)
- * vers les trois fonctions du pseudo-code.
- *
- * @param {object|null} weaponDef - Définition de l'arme (damFirst, damLast, models, weightFO/TA/IN/VI/AD)
- * @param {object} weaponItem - Instance de l'arme (tier, material, affinities)
- * @param {object} attackerStats - Stats de l'attaquant (force, taille, intelligence, vitesse, adresse)
- * @param {number} armorReduction - Réduction d'armure de la cible
- * @param {string|undefined} targetFamily - Famille de la cible
- * @returns {object} {baseArme, modMateriau, coefStats, modAffinite, modTypeDegats, raw, final}
- */
-export function computeDamage(weaponDef, weaponItem, attackerStats, armorReduction, targetFamily) {
-  if (!weaponDef) {
-    return { baseArme: 0, modMateriau: 1, coefStats: 1, modAffinite: 1, modTypeDegats: 1, raw: 0, final: 0 };
-  }
-
-  const NBRTIERS = weaponDef.models.length;
-  const tier = weaponItem?.tier ?? 1;
-  const materiau = (weaponItem?.material ?? 0) + 1; // convert 0-7 to 1-8
-
-  // baseArme (avec Arrondi à 2 décimales, conforme au pseudo-code)
-  const baseArme = Math.round((weaponDef.damFirst + (weaponDef.damLast - weaponDef.damFirst) * (tier - 1) / Math.max(NBRTIERS - 1, 1)) * 100) / 100;
-
-  // modMateriau = 1 + (materiau - 1) * 0.150
-  const modMateriau = 1 + (materiau - 1) * 0.150;
-
-  // coefStats (Arrondi à 2 décimales)
-  const coefStats = Math.round((1
-    + ((attackerStats.force ?? attackerStats.FOR ?? 12) - 12) * 0.02 * (weaponDef.weightFO ?? 0)
-    + ((attackerStats.taille ?? attackerStats.TAI ?? 12) - 12) * 0.02 * (weaponDef.weightTA ?? 0)
-    + ((attackerStats.intelligence ?? attackerStats.INT ?? 12) - 12) * 0.02 * (weaponDef.weightIN ?? 0)
-    + ((attackerStats.vitesse ?? attackerStats.VIT ?? 12) - 12) * 0.02 * (weaponDef.weightVI ?? 0)
-    + ((attackerStats.adresse ?? attackerStats.ADR ?? 12) - 12) * 0.02 * (weaponDef.weightAD ?? 0)) * 100) / 100;
-
-  // modAffinite (Arrondi à 2 décimales)
-  let modAffinite = 1.0;
-  if (targetFamily !== undefined) {
-    const affinityValue = weaponItem?.affinities?.[targetFamily] ?? 0;
-    modAffinite = Math.round((1 + affinityValue / 100) * 100) / 100;
-  }
-
-  // modTypeDegats
-  const modTypeDegats = 1.0;
-
-  // raw
-  const raw = Math.floor(baseArme * modMateriau * coefStats * modAffinite * modTypeDegats);
-
-  // final
-  const final = Math.max(0, raw - armorReduction);
-
-  return { baseArme, modMateriau, coefStats, modAffinite, modTypeDegats, raw, final };
 }
 
 // ─── Phase de Résolution des Dégâts ───────────────────────────────────────────
@@ -808,16 +721,19 @@ export function phaseResolutionDegats(state) {
     // DEF.HP = DEF.HP - FINALDAMAGE
     def.hp -= FINALDAMAGE;
     // Log("... DEF.NOM perd FINALDAMAGE points de vie")
-    log(state, 'damage', `... ${def.name} perd ${FINALDAMAGE} points de vie`);
+    log(state, 'hp_loss', `... ${def.name} perd ${FINALDAMAGE} points de vie (HP: ${def.hp}/${def.hpMax})`);
     // LogDev("(HP : DEF.HP / DEF.HPMAX)")
     logDev(state, 'debug', `(HP : ${def.hp} / ${def.hpMax})`);
 
     // si DEF.HP < 1 alors
     if (def.hp < 1) {
+      def.hp = 0; // Plancher à 0
       // Log("DEF.NOM s'écroule dans une mare de sang.")
       log(state, 'death', `${def.name} s'écroule dans une mare de sang.`);
       // Log("ATT.NOM est victorieux !")
       log(state, 'victory', `${att.name} est victorieux !`);
+      log(state, 'victory', '');
+      flushLogs(state);
       // Exit()
       const winner = attKey === 'player' ? 'player' : 'creature';
       state.result = { winner, hpPlayer: state.player.hp, hpCreature: state.creature.hp };
@@ -856,11 +772,14 @@ export function phaseInitiative(state, rng) {
     // goto Phase fin de boucle
     state.initiativeResult = 'lost';
   } else {
-    // Log("ATT.NOM conserve l'initiative")
-    log(state, 'initiative', `${att.name} conserve l'initiative`);
+    // Log("ATT.NOM enchaîne les attaques")
+    log(state, 'initiative', `${att.name} enchaîne les attaques`);
     // LogDev("(Initiative : ATT.INITIATIVE | D100 : ATT.D100 | Fatigue : ATT.FATIGUE | Qualité : ATT.INITIATIVEQUALITY)")
     logDev(state, 'debug', `(Initiative : ${att.effective.initiative} | D100 : ${d100} | Fatigue : ${att.fatigue} | Qualité : ${initiativeQuality})`);
-    // goto Phase Attaque
+    log(state, 'initiative', '');
+    flushLogs(state);
+    // NEXTPHASE = Phase Attaque, goto fin de boucle
+    state.nextPhase = 'attaque';
     state.initiativeResult = 'kept';
   }
 
@@ -908,7 +827,10 @@ export function phaseRiposte(state, rng) {
     logDev(state, 'debug', `(Riposte : ${def.effective.riposte} | D100 : ${d100} | Fatigue : ${def.fatigue} | Qualité : ${riposteQuality})`);
     // Swap(ATT, DEF)
     state.attacker = defKey;
-    // goto Phase d'attaque
+    log(state, 'riposte', '');
+    flushLogs(state);
+    // NEXTPHASE = Phase Attaque, goto fin de boucle
+    state.nextPhase = 'attaque';
     state.riposteResult = 'success';
   }
 
@@ -1016,6 +938,7 @@ export function initCombatState(playerData, creatureData, config) {
     tempo: 1,
     distance: config.distanceInitiale,
     attacker: null,
+    nextPhase: null,
     devMode: false,
     combatOver: false,
 
@@ -1072,9 +995,12 @@ function buildCombatant(data, config) {
     percentages[name] = normalizeToPercent(skills[name], config.normalization[name], divisors[name], config);
   }
 
+  // Si un HP courant est fourni (persisté entre combats), l'utiliser ; sinon hpMax
+  const hp = (data.hp != null && data.hp > 0) ? Math.min(data.hp, hpMax) : hpMax;
+
   return {
     name,
-    hp: hpMax,
+    hp,
     hpMax,
     endurance: endMax,
     endMax,
@@ -1095,7 +1021,8 @@ function buildCombatant(data, config) {
     weaponL: data.weaponDefL ?? null,
     weaponNameL: data.weaponDefL?.typeArme ?? data.weaponDefL?.weaponType ?? null,
     armor: data.equipment.armure,
-    armorName: data.equipment.armure?.name ?? data.equipment.armure?.nom ?? null
+    armorName: data.equipment.armure?.name ?? data.equipment.armure?.nom ?? null,
+    armorPieces: data.equipment.armure?.pieces ?? null
   };
 }
 
@@ -1189,12 +1116,8 @@ export function mainLoop(state, config, rng) {
         state = phaseRiposte(state, rng);
 
         if (state.riposteResult === 'success') {
-          state.attackResult = null;
-          state.defenseResult = null;
-          state.initiativeResult = null;
-          state.riposteResult = null;
-          state.skipToNextTempo = false;
-          continue; // goto Phase d'attaque
+          // NEXTPHASE = Phase Attaque, goto fin de boucle
+          break;
         }
         // goto Phase fin de boucle
         break;
@@ -1208,12 +1131,8 @@ export function mainLoop(state, config, rng) {
         state = phaseRiposte(state, rng);
 
         if (state.riposteResult === 'success') {
-          state.attackResult = null;
-          state.defenseResult = null;
-          state.initiativeResult = null;
-          state.riposteResult = null;
-          state.skipToNextTempo = false;
-          continue; // goto Phase d'attaque
+          // NEXTPHASE = Phase Attaque, goto fin de boucle
+          break;
         }
         break;
       }
@@ -1229,25 +1148,16 @@ export function mainLoop(state, config, rng) {
       state = phaseInitiative(state, rng);
 
       if (state.initiativeResult === 'kept') {
-        // goto Phase Attaque
-        state.attackResult = null;
-        state.defenseResult = null;
-        state.initiativeResult = null;
-        state.riposteResult = null;
-        state.skipToNextTempo = false;
-        continue;
+        // NEXTPHASE = Phase Attaque, goto fin de boucle
+        break;
       }
 
       // initiativeResult === 'lost' → Phase de riposte
       state = phaseRiposte(state, rng);
 
       if (state.riposteResult === 'success') {
-        state.attackResult = null;
-        state.defenseResult = null;
-        state.initiativeResult = null;
-        state.riposteResult = null;
-        state.skipToNextTempo = false;
-        continue; // goto Phase d'attaque
+        // NEXTPHASE = Phase Attaque, goto fin de boucle
+        break;
       }
 
       // goto Phase fin de boucle
@@ -1273,7 +1183,8 @@ export function mainLoop(state, config, rng) {
       // Vérification match nul
       if (state.minute > config.maxMinutes) {
         state.result = { winner: 'draw', hpPlayer: state.player.hp, hpCreature: state.creature.hp };
-        state.log.push({ type: 'draw', text: `Match nul — temps écoulé (${config.maxMinutes} minutes)` });
+        log(state, 'draw', `Match nul — temps écoulé (${config.maxMinutes} minutes)`);
+        flushLogs(state);
         return state;
       }
 
@@ -1283,6 +1194,9 @@ export function mainLoop(state, config, rng) {
       const defKey = attKey === 'player' ? 'creature' : 'player';
       testEndurance(state[attKey], state, rng);
       testEndurance(state[defKey], state, rng);
+
+      log(state, 'separator', '');
+      flushLogs(state);
 
       // goto Phase début minute
       playerTacticIndex = Math.min(state.minute - 1, state.player.tactics.length - 1);
@@ -1316,6 +1230,9 @@ export function mainLoop(state, config, rng) {
       const defKey = attKey === 'player' ? 'creature' : 'player';
       testEndurance(state[attKey], state, rng);
       testEndurance(state[defKey], state, rng);
+
+      log(state, 'separator', '');
+      flushLogs(state);
 
       // goto Phase de vivacité
       state = phaseVivacite(state, rng);
@@ -1435,6 +1352,7 @@ function normalizeEquipment(equipment) {
   let reduction = 0;
   let poids = 0;
   let hasArmor = false;
+  const pieces = {};
   const slots = ['corps', 'tete', 'bras', 'jambes'];
   for (const slot of slots) {
     const piece = equipment[slot];
@@ -1443,12 +1361,17 @@ function normalizeEquipment(equipment) {
       const tier = piece.tier ?? 1;
       reduction += tier;
       poids += tier * 2;
+      const armorSlot = armors[slot];
+      const armorDef = armorSlot?.find(a => a.tier === tier);
+      pieces[slot] = armorDef?.name ?? null;
+    } else {
+      pieces[slot] = null;
     }
   }
   if (!hasArmor) {
     return { armure: null };
   }
-  return { armure: { reduction, poids } };
+  return { armure: { reduction, poids, pieces } };
 }
 
 /**
@@ -1460,6 +1383,7 @@ function normalizeCombatantData(data) {
     name: data.name ?? data.nameFr ?? 'Combattant',
     nameFr: data.nameFr ?? data.name ?? 'Combattant',
     stats: normalizeStats(data.stats),
+    hp: data.hp ?? null,
     tactic: normalizeTactics(data.tactic),
     weaponDef: normalizeWeapon(data.weaponDef, data.weaponItem),
     weaponDefL: data.weaponDefL ? normalizeWeapon(data.weaponDefL, data.weaponItemL) : null,
@@ -1505,6 +1429,10 @@ export function resolveCombat(playerData, creatureData, optionsOrRng = {}) {
   // Activer le mode debug si demandé
   state.devMode = (typeof optionsOrRng === 'object' && optionsOrRng !== null && optionsOrRng.devMode === true) || false;
 
+  // Sauvegarder les HP de départ (avant le combat)
+  const playerHpStart = state.player.hp;
+  const creatureHpStart = state.creature.hp;
+
   // ─── Phase début du combat ────────────────────────────────────────────────
   log(state, 'separator', `=== Début du combat ===`);
   // Presentation(C1) — commenté dans la spec
@@ -1518,8 +1446,12 @@ export function resolveCombat(playerData, creatureData, optionsOrRng = {}) {
     log: finalState.log,
     winner: finalState.result.winner,
     // Format attendu par server/index.js
+    playerHpStart,
     playerHpFinal: finalState.player.hp,
+    playerHpMax: finalState.player.hpMax,
+    creatureHpStart,
     creatureHpFinal: finalState.creature.hp,
+    creatureHpMax: finalState.creature.hpMax,
     // Format interne (pour les tests)
     hpPlayer: finalState.player.hp,
     hpCreature: finalState.creature.hp
@@ -1553,37 +1485,60 @@ export function presentationCombattant(combattant, state) {
   const mentalOffensif = Math.floor((s.INT + s.VOL) / 2);
   const letalite = Math.floor((s.FOR + s.ADR) / 2);
   const mentalReactif = Math.floor((s.INT + s.VOL + s.VIT) / 3);
-  const maitriseEspace = Math.floor((s.ADR + (24 - s.TAI)) / 2);
+  const espace = Math.floor((s.ADR + (24 - s.TAI)) / 2);
   const solidite = Math.floor((s.FOR + s.VOL + (24 - s.TAI)) / 3);
   const pression = Math.floor((s.VIT + s.INT) / 2);
   const anticipation = Math.floor((s.ADR + s.INT) / 2);
   const tailleCm = 115 + s.TAI * 5;
 
   // présentation
-  addLog(state, 'normal', `=== ${combattant.name} ===`);
-  addLog(state, 'normal', `${combattant.name} mesure ${tailleCm} cm`);
-  addLog(state, 'normal', presentation.MATRICE_PHYSIQUE[tranche(robustesse)][tranche(s.FOR)]);
-  addLog(state, 'normal', presentation.MATRICE_VIVACITE[tranche(rapidite)][tranche(presence)]);
-  addLog(state, 'normal', presentation.MATRICE_ATTAQUE[tranche(mentalOffensif)][tranche(letalite)]);
-  addLog(state, 'normal', presentation.MATRICE_ESQUIVE[tranche(mentalReactif)][tranche(maitriseEspace)]);
-  addLog(state, 'normal', presentation.MATRICE_PARADE[tranche(solidite)][tranche(s.ADR)]);
-  addLog(state, 'normal', presentation.MATRICE_INITIATIVE[tranche(s.VOL)][tranche(pression)]);
+  log(state, 'normal', `=== ${combattant.name} ===`);
+  log(state, 'normal', `${combattant.name} mesure ${tailleCm} cm`);
+  log(state, 'normal', presentation.MATRICE_PHYSIQUE[tranche(robustesse)][tranche(s.FOR)]);
+  log(state, 'normal', presentation.MATRICE_VIVACITE[tranche(rapidite)][tranche(presence)]);
+  log(state, 'normal', presentation.MATRICE_ATTAQUE[tranche(mentalOffensif)][tranche(letalite)]);
+  log(state, 'normal', presentation.MATRICE_ESQUIVE[tranche(mentalReactif)][tranche(espace)]);
+  log(state, 'normal', presentation.MATRICE_PARADE[tranche(solidite)][tranche(s.ADR)]);
+  log(state, 'normal', presentation.MATRICE_INITIATIVE[tranche(s.VOL)][tranche(pression)]);
   log(state, 'normal', presentation.MATRICE_RIPOSTE[tranche(s.VIT)][tranche(anticipation)]);
+  log(state, 'normal', '');
+  flushLogs(state);
 }
 
 /**
  * Equipement — affiche l'équipement d'un combattant.
+ * Format arme : "${model} en ${matière}" (comme les écrans d'inventaire/équipement).
+ * Armure : affiche les 4 slots individuellement (corps, tête, bras, jambes).
  */
 export function equipementCombattant(combattant, state) {
   if (combattant.weapon) {
-    log(state, 'normal', `${combattant.name} combat avec ${combattant.weaponName} en main droite`);
+    const modelIndex = (combattant.weapon.tier ?? 1) - 1;
+    const model = combattant.weapon.models?.[modelIndex] ?? combattant.weaponName;
+    const matName = COMBAT.materials[(combattant.weapon.materiau ?? 1) - 1] ?? "?";
+    log(state, 'normal', `${combattant.name} combat avec ${model} en ${matName} en main droite`);
   }
   if (combattant.weaponL) {
-    log(state, 'normal', `${combattant.name} porte ${combattant.weaponNameL} en main gauche`);
+    const modelIndex = (combattant.weaponL.tier ?? 1) - 1;
+    const model = combattant.weaponL.models?.[modelIndex] ?? combattant.weaponNameL;
+    const matName = COMBAT.materials[(combattant.weaponL.materiau ?? 1) - 1] ?? "?";
+    log(state, 'normal', `${combattant.name} porte ${model} en ${matName} en main gauche`);
   }
-  if (combattant.armor) {
-    log(state, 'normal', `${combattant.name} est protégé par ${combattant.armorName}`);
-  } else {
+  if (combattant.armorPieces) {
+    if (combattant.armorPieces.corps) {
+      log(state, 'normal', `${combattant.name} porte ${combattant.armorPieces.corps} (corps)`);
+    }
+    if (combattant.armorPieces.tete) {
+      log(state, 'normal', `${combattant.name} porte ${combattant.armorPieces.tete} (tête)`);
+    }
+    if (combattant.armorPieces.bras) {
+      log(state, 'normal', `${combattant.name} porte ${combattant.armorPieces.bras} (bras)`);
+    }
+    if (combattant.armorPieces.jambes) {
+      log(state, 'normal', `${combattant.name} porte ${combattant.armorPieces.jambes} (jambes)`);
+    }
+  } else if (!combattant.armor) {
     log(state, 'normal', `${combattant.name} combat sans armure`);
   }
+  log(state, 'normal', '');
+  flushLogs(state);
 }

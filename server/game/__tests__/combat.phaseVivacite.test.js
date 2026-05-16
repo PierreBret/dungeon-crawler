@@ -2,6 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { phaseVivacite } from '../combat.js';
 
 /**
+ * Unit tests for phaseVivacite.
+ *
+ * Note: phaseVivacite ne fait PAS de flushLogs() quand un gagnant est déterminé.
+ * Les entrées de log restent dans state.logBuffer.
+ * flushLogs() n'est appelé que quand les deux qualités sont < 0 (retry).
+ *
+ * Pseudo-code: si C1.VIVACITYQUALITY >= C2.VIVACITYQUALITY → ATT = C1
+ * (égalité va au joueur, pas de tirage aléatoire)
+ */
+
+/**
  * Helper: creates a minimal CombatState for phaseVivacite testing.
  */
 function makeState(playerVivacite, playerFatigue, creatureVivacite, creatureFatigue) {
@@ -22,6 +33,7 @@ function makeState(playerVivacite, playerFatigue, creatureVivacite, creatureFati
       fatigue: creatureFatigue
     },
     log: [],
+    logBuffer: [],
     result: null
   };
 }
@@ -44,9 +56,8 @@ describe('phaseVivacite', () => {
     const result = phaseVivacite(state, rng);
 
     expect(result.attacker).toBe('player');
-    expect(result.log).toHaveLength(1);
-    expect(result.log[0].type).toBe('initiative');
-    expect(result.log[0].text).toContain('Joueur');
+    // Pas de flushLogs → entrées dans logBuffer
+    expect(result.logBuffer.some(l => l.type === 'initiative' && l.text.includes('Joueur'))).toBe(true);
   });
 
   it('designates creature as ATT when creature quality is higher', () => {
@@ -58,29 +69,18 @@ describe('phaseVivacite', () => {
     const result = phaseVivacite(state, rng);
 
     expect(result.attacker).toBe('creature');
-    expect(result.log[0].text).toContain('Créature');
+    expect(result.logBuffer.some(l => l.text.includes('Créature'))).toBe(true);
   });
 
-  it('uses random tiebreak when qualities are equal — player wins', () => {
-    // Both: effective=50, fatigue=0, same rng → same d100 → same quality
-    // Tiebreak rng: 0.3 < 0.5 → player
-    const state = makeState(50, 0, 50, 0);
-    const rng = fixedRng([0.5, 0.5, 0.3]); // d100 for player, d100 for creature, tiebreak
+  it('player wins on tie (C1.QUALITY >= C2.QUALITY)', () => {
+    // Both: effective=80, fatigue=0, same rng → same d100 → same quality
+    // rng=0.1 → d100=11, quality=80-11-0=69 for both → tie → player wins
+    const state = makeState(80, 0, 80, 0);
+    const rng = fixedRng([0.1, 0.1]);
 
     const result = phaseVivacite(state, rng);
 
     expect(result.attacker).toBe('player');
-  });
-
-  it('uses random tiebreak when qualities are equal — creature wins', () => {
-    // Both: effective=50, fatigue=0, same rng → same d100 → same quality
-    // Tiebreak rng: 0.7 >= 0.5 → creature
-    const state = makeState(50, 0, 50, 0);
-    const rng = fixedRng([0.5, 0.5, 0.7]); // d100 for player, d100 for creature, tiebreak
-
-    const result = phaseVivacite(state, rng);
-
-    expect(result.attacker).toBe('creature');
   });
 
   it('returns the modified state object', () => {
@@ -103,12 +103,33 @@ describe('phaseVivacite', () => {
     expect(result.attacker).toBe('creature');
   });
 
-  it('works when both qualities are negative (highest still wins)', () => {
-    // Player: effective=20, fatigue=10, rng=0.8 → d100=81, quality=20-81-10=-71
-    // Creature: effective=20, fatigue=10, rng=0.9 → d100=91, quality=20-91-10=-81
-    // Player quality (-71) > Creature quality (-81) → player is ATT
-    const state = makeState(20, 10, 20, 10);
-    const rng = fixedRng([0.8, 0.9]);
+  it('retries with flushLogs when both qualities are negative', () => {
+    // First iteration: both negative → flushLogs + retry
+    // Second iteration: player wins
+    const state = makeState(50, 0, 50, 0);
+    let i = 0;
+    // Non-cycling: iteration 1 gives both negative, iteration 2 gives player positive
+    const values = [0.99, 0.99, 0.1, 0.8];
+    const rng = () => {
+      if (i >= values.length) return 0.1; // safety fallback
+      return values[i++];
+    };
+
+    const result = phaseVivacite(state, rng);
+
+    expect(result.attacker).toBe('player');
+    // First iteration flushed to state.log
+    expect(result.log.some(l => l.text.includes('cherchent une ouverture'))).toBe(true);
+  });
+
+  it('alternance bonus applied to non-ATT when attacker is set', () => {
+    // attacker = 'player' → creature gets +30 bonus
+    // Player: effective=50, rng=0.1 → d100=11, quality=50-11-0=39
+    // Creature: effective=20, rng=0.5 → d100=51, quality=20-51-0=-31, +30 = -1
+    // Player (39) > Creature (-1) → player wins
+    const state = makeState(50, 0, 20, 0);
+    state.attacker = 'player';
+    const rng = fixedRng([0.1, 0.5]);
 
     const result = phaseVivacite(state, rng);
 

@@ -3,7 +3,12 @@ import { phaseInitiative, phaseRiposte } from '../combat.js';
 
 /**
  * Unit tests for phaseInitiative and phaseRiposte
- * Validates: Requirements 12.1, 12.2, 12.3, 12.4, 12.5, 12.6
+ *
+ * Note: phaseInitiative appelle flushLogs() en cas de succès (les entrées vont dans state.log).
+ * En cas d'échec, seul logDev est appelé (rien dans state.log en non-devMode, entrées dans logBuffer en devMode).
+ *
+ * phaseRiposte appelle flushLogs() en cas de succès (les entrées vont dans state.log).
+ * En cas d'échec, log() est appelé mais pas flushLogs() (entrées dans logBuffer).
  */
 
 /**
@@ -49,9 +54,11 @@ describe('phaseInitiative', () => {
     const result = phaseInitiative(state, rng);
 
     expect(result.initiativeResult).toBe('kept');
-    expect(result.log.length).toBe(1);
+    // flushLogs() est appelé → entrées dans state.log
+    // log("enchaîne") + log("") = 2 entrées
+    expect(result.log.length).toBe(2);
     expect(result.log[0].type).toBe('initiative');
-    expect(result.log[0].text).toContain('conserve');
+    expect(result.log[0].text).toContain('enchaîne les attaques');
   });
 
   it('ATT loses initiative when roll fails (quality < 0)', () => {
@@ -64,7 +71,8 @@ describe('phaseInitiative', () => {
     const result = phaseInitiative(state, rng);
 
     expect(result.initiativeResult).toBe('lost');
-    expect(result.log.length).toBe(0); // no visible log in non-devMode
+    expect(result.log.length).toBe(0); // no flushLogs called, logDev only
+    expect(result.logBuffer.length).toBe(0); // devMode=false → nothing in buffer either
   });
 
   it('uses creature stats when creature is ATT', () => {
@@ -103,6 +111,19 @@ describe('phaseInitiative', () => {
 
     expect(result.initiativeResult).toBe('kept');
   });
+
+  it('devMode: logDev entries appear in logBuffer when initiative fails', () => {
+    const state = makeState({ attacker: 'player', playerInitiative: 50, playerFatigue: 0 });
+    state.devMode = true;
+    const rng = fixedRng([0.99]);
+
+    const result = phaseInitiative(state, rng);
+
+    expect(result.initiativeResult).toBe('lost');
+    expect(result.log.length).toBe(0); // no flushLogs called
+    expect(result.logBuffer.length).toBe(1); // logDev entry in buffer
+    expect(result.logBuffer[0].type).toBe('debug');
+  });
 });
 
 describe('phaseRiposte', () => {
@@ -115,6 +136,7 @@ describe('phaseRiposte', () => {
 
     expect(result.riposteResult).toBeNull();
     expect(result.log.length).toBe(0);
+    expect(result.logBuffer.length).toBe(0);
     expect(result.attacker).toBe('player');
   });
 
@@ -130,6 +152,7 @@ describe('phaseRiposte', () => {
 
     expect(result.riposteResult).toBe('success');
     expect(result.attacker).toBe('creature'); // roles inverted
+    // flushLogs() appelé → entrées dans state.log
     expect(result.log.some(l => l.type === 'riposte' && l.text.includes('contre-attaque'))).toBe(true);
   });
 
@@ -145,7 +168,9 @@ describe('phaseRiposte', () => {
 
     expect(result.riposteResult).toBe('fail');
     expect(result.attacker).toBe('player'); // roles NOT inverted
-    expect(result.log.some(l => l.type === 'riposte' && l.text.includes('rate'))).toBe(true);
+    // Pas de flushLogs() → entrées dans logBuffer
+    expect(result.log.length).toBe(0);
+    expect(result.logBuffer.some(l => l.type === 'riposte' && l.text.includes('rate'))).toBe(true);
   });
 
   it('uses player as DEF when creature is ATT', () => {
