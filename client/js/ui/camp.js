@@ -5,16 +5,18 @@
 
 import { CAMP_OPTIONS }        from "../core/constants.js";
 import { getLayout }           from "../core/constants.js";
+import { MATERIALS }           from "../core/constants.js";
 import { drawPlayerCard }      from "./components/characterCard.js";
-import { gameData, MATERIALS } from "../core/gameData.js";
-import { drawEquipPanel }      from "./components/equipPanel.js";
+import { gameData }            from "../core/gameData.js";
+import { drawEquipPanel, getCompatibleItems } from "./components/equippanel.js";
+import { drawArmorEquipPanel, getArmorItemsForSlot } from "./components/equiparmorpanel.js";
+import { drawForgePanel, drawForgeResult } from "./components/forgepanel.js";
 import {
-  computeWeaponDamage,
+  WeaponDamage,
   getDamageTypeLabel,
   getAffinityLabel,
   AFFINITY_KEYS
 } from "../core/damagecalc.js";
-import { computeEquipMessages } from "../core/equipchecks.js";
 
 export function drawCamp(ctx, player, campState = {}) {
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -24,7 +26,7 @@ export function drawCamp(ctx, player, campState = {}) {
 
   drawLeftPanel(ctx, player, layout);
   drawCenterPanel(ctx, campState, layout, player);
-  drawRightPanel(ctx, layout, campState, player);
+  drawRightPanel(ctx, layout, campState);
 }
 
 // ─── Panneau gauche — carte joueur ───────────────────────────────────────────
@@ -54,10 +56,11 @@ function drawCenterPanel(ctx, campState, layout, player) {
   ctx.fillRect(centerX, 0, centerWidth, layout.height);
 
   const MODE_LABELS = {
-    menu:      "Campement",
-    rest:      "Repos",
-    inventory: "Inventaire",
-    equip:     "Équiper"
+    menu:       "Campement",
+    rest:       "Repos",
+    equip:      "Équipement (armes)",
+    equipArmor: "Équipement (armures)",
+    forge:      "Forge"
   };
 
   ctx.fillStyle = "white";
@@ -74,12 +77,14 @@ function drawCenterPanel(ctx, campState, layout, player) {
   const contentY = padding + 70;
 
   switch (campState.mode) {
-    case "inventory":
-      drawInventoryPanel(ctx, campState, centerX + padding, contentY,
-        centerWidth - padding * 2, layout.height - contentY - padding, player);
-      break;
     case "equip":
-      drawEquipPanel(ctx, campState, centerX + padding, contentY, centerWidth - padding * 2);
+      drawEquipPanel(ctx, campState, centerX + padding, padding + 46, centerWidth - padding * 2, player);
+      break;
+    case "equipArmor":
+      drawArmorEquipPanel(ctx, campState, centerX + padding, padding + 46, centerWidth - padding * 2, player);
+      break;
+    case "forge":
+      drawForgePanel(ctx, campState, centerX + padding, padding + 46, centerWidth - padding * 2);
       break;
     case "rest":
       drawRestPanel(ctx, centerX + padding, contentY);
@@ -92,7 +97,7 @@ function drawCenterPanel(ctx, campState, layout, player) {
 
 // ─── Panneau droit — messages équipement ─────────────────────────────────────
 
-function drawRightPanel(ctx, layout, campState, player) {
+function drawRightPanel(ctx, layout, campState) {
   const { rightX, rightWidth, height, padding } = layout;
 
   ctx.fillStyle = "#161616";
@@ -105,70 +110,38 @@ function drawRightPanel(ctx, layout, campState, player) {
   ctx.lineTo(rightX, height);
   ctx.stroke();
 
-  // Affichage uniquement en mode équip avec joueur et inventaire disponibles
-  if (campState.mode !== "equip" || !player?.stats || !campState.inventory) return;
+  // En mode équip : afficher les détails de l'arme sélectionnée dans la liste
+  if (campState.mode === "equip") {
+    const inventory = campState.inventory ?? [];
+    const hand      = campState.equipSelectedHand ?? "right";
+    const items     = getCompatibleItems(inventory, hand);
+    const selIdx    = campState.equipIndex ?? 0;
+    const selectedItem = items[selIdx];
 
-  const inventory    = campState.inventory;
-  const rightItem    = inventory.find(i => i.equippedSlot === "rightHand");
-  const leftItem     = inventory.find(i => i.equippedSlot === "leftHand");
-
-  const rightDef     = rightItem ? gameData.weapons.find(w => w.code === rightItem.itemCode) : null;
-  const leftDef      = leftItem  ? gameData.weapons.find(w => w.code === leftItem.itemCode)  : null;
-  const leftIsShield = leftDef ? (leftDef.damFirst === 0 && leftDef.damLast === 0) : false;
-
-  if (!rightDef && !leftDef) return;
-
-  const messages = computeEquipMessages(
-    player.stats, player.name, rightDef, leftDef, leftIsShield
-  );
-
-  // ─── Titre ────────────────────────────────────────────────────────────────
-
-  const x = rightX + padding;
-  let   y = padding;
-
-  ctx.fillStyle = "#888";
-  ctx.font      = "13px monospace";
-  ctx.fillText("Aptitude au combat", x, y);
-  y += 8;
-
-  ctx.strokeStyle = "#333";
-  ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.moveTo(x, y + 14);
-  ctx.lineTo(rightX + rightWidth - padding, y + 14);
-  ctx.stroke();
-  y += 28;
-
-  // ─── Messages ─────────────────────────────────────────────────────────────
-
-  const lineH  = 18;
-  const maxW   = rightWidth - padding * 2;
-
-  ctx.font = "12px monospace";
-
-  for (const msg of messages) {
-    ctx.fillStyle = "white";
-
-    // Retour à la ligne automatique
-    const words = msg.split(" ");
-    let   line  = "";
-
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (ctx.measureText(test).width > maxW && line) {
-        ctx.fillText(line, x, y);
-        y    += lineH;
-        line  = word;
-      } else {
-        line = test;
-      }
+    if (selectedItem) {
+      drawItemDetail(ctx, selectedItem, rightX + padding, padding, rightWidth - padding * 2);
     }
-    if (line) {
-      ctx.fillText(line, x, y);
-      y += lineH;
+    return;
+  }
+
+  // En mode equipArmor : afficher les détails de l'armure sélectionnée
+  if (campState.mode === "equipArmor") {
+    const inventory = campState.inventory ?? [];
+    const slot      = campState.armorSelectedSlot ?? "tete";
+    const items     = getArmorItemsForSlot(inventory, slot);
+    const selIdx    = campState.armorIndex ?? 0;
+    const selectedItem = items[selIdx];
+
+    if (selectedItem) {
+      drawArmorDetail(ctx, selectedItem, rightX + padding, padding, rightWidth - padding * 2);
     }
-    y += 6; // espace entre messages
+    return;
+  }
+
+  // En mode forge : afficher le résultat de la fusion
+  if (campState.mode === "forge") {
+    drawForgeResult(ctx, campState, rightX + padding, padding, rightWidth - padding * 2);
+    return;
   }
 }
 
@@ -208,95 +181,9 @@ function drawRestPanel(ctx, x, y) {
   ctx.fillText("Échap retour", x, y + 40);
 }
 
-// ─── Inventaire ───────────────────────────────────────────────────────────────
-
-function drawInventoryPanel(ctx, campState, x, y, width, height, player) {
-  const inventory = campState.inventory ?? [];
-  const halfW     = Math.floor(width / 2) - 10;
-  const detailX   = x + halfW + 20;
-  const detailW   = width - halfW - 20;
-
-  if (inventory.length === 0) {
-    ctx.fillStyle = "#888";
-    ctx.font      = "18px Arial";
-    ctx.fillText("Inventaire vide", x, y);
-    return;
-  }
-
-  // ─── Liste gauche ─────────────────────────────────────────────────────────
-
-  ctx.font = "18px Arial";
-  const lineHeight = 32;
-  const maxHeight  = height - 60; // réserve pour légende
-  const maxItems   = Math.floor(maxHeight / lineHeight);
-  const scroll     = campState.inventoryScroll ?? 0;
-
-  const selectedIndex = campState.inventoryIndex ?? 0;
-  let newScroll = scroll;
-  if (selectedIndex < newScroll) newScroll = selectedIndex;
-  else if (selectedIndex >= newScroll + maxItems) newScroll = selectedIndex - maxItems + 1;
-  campState.inventoryScroll = newScroll;
-
-  ctx.strokeStyle = "#444";
-  ctx.lineWidth   = 1;
-  ctx.strokeRect(x - 8, y - 4, halfW + 16, maxHeight);
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x - 8, y - 4, halfW + 16, maxHeight);
-  ctx.clip();
-
-  let itemY = y;
-  for (let i = newScroll; i < Math.min(newScroll + maxItems, inventory.length); i++) {
-    const item       = inventory[i];
-    const isSelected = i === selectedIndex;
-
-    if (isSelected) {
-      ctx.fillStyle = "#333";
-      ctx.fillRect(x - 8, itemY - 4, halfW + 16, lineHeight - 4);
-      ctx.fillStyle = "yellow";
-    } else {
-      ctx.fillStyle = item.equippedSlot ? "#7ec8e3" : "white";
-    }
-
-    let label = getItemLabel(item);
-    if (item.equippedSlot) label += " ✓";
-    ctx.fillText(label, x, itemY);
-    itemY += lineHeight;
-  }
-
-  ctx.restore();
-
-  if (inventory.length > maxItems) {
-    const scrollY      = y + (newScroll / inventory.length) * maxHeight;
-    const scrollHeight = (maxItems / inventory.length) * maxHeight;
-    ctx.fillStyle = "#666";
-    ctx.fillRect(x + halfW + 10, scrollY, 4, scrollHeight);
-  }
-
-  // ─── Légende / dialog confirmation ────────────────────────────────────────
-
-  const legendY = y + maxHeight + 10;
-
-  if (campState.inventoryConfirm) {
-    drawDeleteConfirm(ctx, campState, x, legendY, halfW);
-  } else {
-    ctx.fillStyle = "#555";
-    ctx.font      = "13px Arial";
-    ctx.fillText("↑↓ naviguer  •  Entrée supprimer  •  Échap retour", x, legendY);
-  }
-
-  // ─── Détail item droite ───────────────────────────────────────────────────
-
-  const selectedItem = inventory[selectedIndex];
-  if (selectedItem) {
-    drawItemDetail(ctx, selectedItem, detailX, y, detailW, player);
-  }
-}
-
 // ─── Détail item ──────────────────────────────────────────────────────────────
 
-function drawItemDetail(ctx, item, x, y, width, player) {
+function drawItemDetail(ctx, item, x, y, width) {
   if (item.itemType !== "weapon") return;
 
   const weaponDef = gameData.weapons.find(w => w.code === item.itemCode);
@@ -354,19 +241,20 @@ function drawItemDetail(ctx, item, x, y, width, player) {
   }
 
   const hands    = weaponDef.hd === 2 ? "2 mains" : "1 main";
-  const dmgType  = getDamageTypeLabel(weaponDef.damageType);
-  const nbTiers  = weaponDef.models?.length ?? 1;
-  const baseArme = weaponDef.damFirst +
-    (weaponDef.damLast - weaponDef.damFirst) * ((item.tier ?? 1) - 1) / Math.max(nbTiers - 1, 1);
 
   drawLine("Type :",        weaponDef.typeArme);
   drawLine("Dégâts :",      getDamageTypeLabel(weaponDef.damageType));
   drawLine("Maniement :",   hands);
 
-  // Dégâts calculés (sans modAffinité ni modTypeDégâts)
-  const dmg = player?.stats
-    ? computeWeaponDamage(item, weaponDef, material, player.stats)
-    : Math.floor(baseArme * material.modMat);
+  // Dégâts calculés via WeaponDamage (base selon tier et matériau)
+  const WEAPON = {
+    tier:     item.tier ?? 1,
+    materiau: (item.material ?? 0) + 1,
+    models:   weaponDef.models,
+    damFirst: weaponDef.damFirst,
+    damLast:  weaponDef.damLast
+  };
+  const dmg = WeaponDamage(WEAPON);
 
   drawLine("Dégâts :",      `${dmg}`);
 
@@ -433,72 +321,7 @@ function drawItemDetail(ctx, item, x, y, width, player) {
   }
 }
 
-// ─── Dialog confirmation suppression ─────────────────────────────────────────
-
-function drawDeleteConfirm(ctx, campState, x, y, width) {
-  if (!campState.inventoryConfirm) {
-    console.error("drawDeleteConfirm: inventoryConfirm manquant");
-    return;
-  }
-
-  const item  = campState.inventoryConfirm;
-  const label = getItemLabel(item);
-
-  const dialogH = 80;
-  ctx.fillStyle = "#1e1000";
-  ctx.fillRect(x - 8, y - 10, width + 16, dialogH);
-  ctx.strokeStyle = "#d4a017";
-  ctx.lineWidth   = 1;
-  ctx.strokeRect(x - 8, y - 10, width + 16, dialogH);
-
-  ctx.fillStyle = "white";
-  ctx.font      = "13px monospace";
-  ctx.fillText(`Détruire "${label}" ?`, x, y + 4);
-
-  const confirmChoice = campState.inventoryConfirmChoice ?? 1;
-  const btnY          = y + 34;
-  const btnW          = 70;
-  const btnH          = 26;
-  const ouiX          = x + width / 2 - btnW - 12;
-  const nonX          = x + width / 2 + 12;
-
-  ctx.fillStyle   = confirmChoice === 0 ? "#8b0000" : "#2a2a2a";
-  ctx.fillRect(ouiX, btnY, btnW, btnH);
-  ctx.strokeStyle = confirmChoice === 0 ? "#ff4444" : "#555";
-  ctx.lineWidth   = confirmChoice === 0 ? 2 : 1;
-  ctx.strokeRect(ouiX, btnY, btnW, btnH);
-  ctx.fillStyle   = confirmChoice === 0 ? "#ff4444" : "#666";
-  ctx.font        = "13px monospace";
-  ctx.textAlign   = "center";
-  ctx.fillText("Oui", ouiX + btnW / 2, btnY + 7);
-
-  ctx.fillStyle   = confirmChoice === 1 ? "#003300" : "#2a2a2a";
-  ctx.fillRect(nonX, btnY, btnW, btnH);
-  ctx.strokeStyle = confirmChoice === 1 ? "#44ff44" : "#555";
-  ctx.lineWidth   = confirmChoice === 1 ? 2 : 1;
-  ctx.strokeRect(nonX, btnY, btnW, btnH);
-  ctx.fillStyle   = confirmChoice === 1 ? "#44ff44" : "#666";
-  ctx.fillText("Non", nonX + btnW / 2, btnY + 7);
-
-  ctx.textAlign = "left";
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getItemLabel(item) {
-  if (!item) {
-    console.error("getItemLabel: item manquant");
-    return "?";
-  }
-  if (item.itemType === "weapon") {
-    const weaponDef  = gameData.weapons.find(w => w.code === item.itemCode);
-    const modelIndex = (item.tier ?? 1) - 1;
-    const weaponName = weaponDef?.models?.[modelIndex] ?? item.itemCode;
-    const matName    = MATERIALS[item.material]?.name ?? "?";
-    return `${weaponName} en ${matName}`;
-  }
-  return `${item.slot ?? "?"} T${item.tier}`;
-}
 
 const imageCache = {};
 
@@ -513,4 +336,43 @@ function getOrLoadImage(path) {
     imageCache[path] = img;
   }
   return imageCache[path];
+}
+
+// ─── Détail armure (panneau droit) ────────────────────────────────────────────
+
+function drawArmorDetail(ctx, item, x, y, width) {
+  if (item.itemType !== "armor") return;
+
+  const slotArmors = gameData.armors[item.slot];
+  if (!slotArmors) return;
+
+  const armorDef = slotArmors.find(a => a.tier === (item.tier ?? 1));
+  if (!armorDef) return;
+
+  let currentY = y;
+  const lineH  = 24;
+
+  // ─── Nom ──────────────────────────────────────────────────────────────────
+
+  ctx.fillStyle = "#d4a017";
+  ctx.font      = "bold 15px monospace";
+  ctx.fillText(armorDef.name, x, currentY);
+  currentY += lineH + 4;
+
+  // ─── Infos ────────────────────────────────────────────────────────────────
+
+  function drawLine(label, value) {
+    ctx.fillStyle = "#888";
+    ctx.font      = "13px monospace";
+    ctx.fillText(label, x, currentY);
+    ctx.fillStyle = "white";
+    ctx.fillText(value, x + 140, currentY);
+    currentY += lineH;
+  }
+
+  const SLOT_LABELS = { tete: "Tête", corps: "Corps", bras: "Bras", jambes: "Jambes" };
+
+  drawLine("Emplacement :", SLOT_LABELS[item.slot] ?? item.slot);
+  drawLine("Armure :",      `${armorDef.reduction}`);
+  drawLine("Poids :",       `${armorDef.weight}`);
 }

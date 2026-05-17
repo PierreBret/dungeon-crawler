@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mainLoop, initCombatState } from '../combat.js';
-import { COMBAT } from '../combatConfig.js';
+import { COMBAT } from '../variables.js';
 
 /**
  * Unit tests for mainLoop(state, config, rng)

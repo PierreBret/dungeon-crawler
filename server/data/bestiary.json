@@ -1,9 +1,10 @@
 [
   {
     "id": "goblin_scout",
-    "nameFr": "Gobelin éclaireur",
+    "nameFr": "Eclaireur gobelin",
     "family": "bestial",
     "tier": 1,
+    "step": 2,
     "stats": {
       "force":        6,
       "constitution": 7,

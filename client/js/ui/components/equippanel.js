@@ -19,15 +19,16 @@
     - Appeler drawEquipPanel() depuis drawCenterPanel() case "equip"
 */
 
-import { gameData, MATERIALS } from "../../core/gameData.js";
+import { MATERIALS }             from "../../core/constants.js";
+import { gameData }              from "../../core/gameData.js";
+import { computeEquipMessages }  from "../../core/equipchecks.js";
 
 // ─── Ratios fixes — proportions préservées quelle que soit la résolution ──────
-
 const SILHOUETTE_W_RATIO = 0.22;   // % de la largeur disponible
 const SILHOUETTE_ASPECT  = 2.0;    // hauteur = largeur × 2
 
 const FRAME_W_RATIO      = 0.35;   // % de la largeur disponible
-const FRAME_ASPECT       = 1.35;   // hauteur = largeur × 1.35
+const FRAME_ASPECT       = 1;   // hauteur = largeur × 1.35
 
 const FRAME_GAP_RATIO    = 0.03;   // % de la largeur disponible
 
@@ -35,7 +36,6 @@ const LIST_H_RATIO       = 0.25;   // % de la hauteur canvas
 const LIST_LINE_H        = 28;
 
 // ─── Calcul des dimensions depuis la largeur disponible ───────────────────────
-
 function computeLayout(width, canvasHeight) {
   const silW    = Math.floor(width * SILHOUETTE_W_RATIO);
   const silH    = Math.floor(silW  * SILHOUETTE_ASPECT);
@@ -49,7 +49,7 @@ function computeLayout(width, canvasHeight) {
 
 // ─── Draw principal ───────────────────────────────────────────────────────────
 
-export function drawEquipPanel(ctx, campState, x, y, width) {
+export function drawEquipPanel(ctx, campState, x, y, width, player) {
   if (typeof width !== "number" || width <= 0) throw new Error("drawEquipPanel: width invalide");
 
   if (!campState.equipSelectedHand) campState.equipSelectedHand = "right";
@@ -60,7 +60,7 @@ export function drawEquipPanel(ctx, campState, x, y, width) {
   const dim       = computeLayout(width, ctx.canvas.height);
 
   const centerX   = x + width / 2;
-  const frameY    = y + 20;
+  const frameY    = y;
 
   const silX = centerX - dim.silW / 2;
   const silY = frameY;
@@ -86,7 +86,7 @@ export function drawEquipPanel(ctx, campState, x, y, width) {
   drawHandFrame(ctx, leftFrameX, leftFrameY, dim.frameW, dim.frameH,
     leftFrameItem, "Main gauche", leftActive, leftBlocked);
 
-  const listY  = frameY + dim.silH + 30;
+  const listY  = frameY + dim.silH + 10;
   const listW  = dim.frameW + dim.gap + dim.silW / 2 - 10;
 
   const rightWeapons = getCompatibleItems(inventory, "right");
@@ -99,9 +99,23 @@ export function drawEquipPanel(ctx, campState, x, y, width) {
     dim.listH, leftWeapons, leftHandItem, leftActive, leftBlocked);
 
   const legendY = listY + dim.listH + 20;
+
+  // ─── Dialog de confirmation de suppression ────────────────────────────────
+
+  if (campState.equipConfirm) {
+    drawEquipDeleteConfirm(ctx, campState, x, legendY, width);
+  }
+
+  // ─── Aptitude au combat (sous les listes) ─────────────────────────────────
+
+  drawCombatAptitude(ctx, x, legendY, width, campState, player);
+
+  // ─── Légende clavier tout en bas du panneau ───────────────────────────────
+
+  const helperY = ctx.canvas.height - 30;
   ctx.fillStyle = "#555";
   ctx.font      = "13px monospace";
-  ctx.fillText("←/→ changer de main  •  ↑/↓ naviguer  •  Entrée équiper/déséquiper  •  Échap retour", x, legendY);
+  ctx.fillText("←/→ changer de main  •  ↑/↓ naviguer  •  Entrée équiper  •  J jeter  •  Échap retour", x, helperY);
 }
 
 // ─── Silhouette placeholder ───────────────────────────────────────────────────
@@ -319,11 +333,34 @@ function drawSlotList(ctx, campState, x, y, w, maxH, items, equippedItem, isActi
  * @param {Function} equipCallback   — onEquip(itemId, slot, itemCode)
  * @param {Function} unequipCallback — onUnequip(itemId, slot)
  * @param {Function} escCallback     — onEscape()
+ * @param {Function} dropCallback    — onDrop(itemId)
  */
-export function handleEquipKeys(e, campState, equipCallback, unequipCallback, escCallback) {
+export function handleEquipKeys(e, campState, equipCallback, unequipCallback, escCallback, dropCallback) {
   if (typeof equipCallback   !== "function") throw new Error("handleEquipKeys: equipCallback doit être une fonction");
   if (typeof unequipCallback !== "function") throw new Error("handleEquipKeys: unequipCallback doit être une fonction");
   if (typeof escCallback     !== "function") throw new Error("handleEquipKeys: escCallback doit être une fonction");
+  if (typeof dropCallback    !== "function") throw new Error("handleEquipKeys: dropCallback doit être une fonction");
+
+  // ─── Mode confirmation de suppression ─────────────────────────────────────
+  if (campState.equipConfirm) {
+    if (e.key === "ArrowLeft")  { campState.equipConfirmChoice = 0; return true; }
+    if (e.key === "ArrowRight") { campState.equipConfirmChoice = 1; return true; }
+    if (e.key === "Enter") {
+      if (campState.equipConfirmChoice === 0) {
+        const item = campState.equipConfirm;
+        if (item?.id) dropCallback(item.id);
+      }
+      campState.equipConfirm       = null;
+      campState.equipConfirmChoice = 1;
+      return true;
+    }
+    if (e.key === "Escape") {
+      campState.equipConfirm       = null;
+      campState.equipConfirmChoice = 1;
+      return true;
+    }
+    return true;
+  }
 
   const inventory     = campState.inventory ?? [];
   const hand          = campState.equipSelectedHand ?? "right";
@@ -384,20 +421,146 @@ export function handleEquipKeys(e, campState, equipCallback, unequipCallback, es
       escCallback();
       return true;
     }
+
+    case "j": {
+      if (items.length === 0) return true;
+      const item = items[campState.equipIndex ?? 0];
+      if (!item) return true;
+      // Les armes équipées ne peuvent pas être jetées
+      if (item.equippedSlot) return true;
+      campState.equipConfirm       = item;
+      campState.equipConfirmChoice = 1;
+      return true;
+    }
   }
 
   return false;
 }
 
+// ─── Dialog confirmation suppression (page équipement) ───────────────────────
+
+function drawEquipDeleteConfirm(ctx, campState, x, y, width) {
+  const item  = campState.equipConfirm;
+  if (!item) return;
+
+  const label   = getItemLabel(item);
+  const dialogH = 80;
+
+  ctx.fillStyle = "#1e1000";
+  ctx.fillRect(x, y - 10, width, dialogH);
+  ctx.strokeStyle = "#d4a017";
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(x, y - 10, width, dialogH);
+
+  ctx.fillStyle = "white";
+  ctx.font      = "13px monospace";
+  ctx.fillText(`Détruire "${label}" ?`, x + 8, y + 4);
+
+  const confirmChoice = campState.equipConfirmChoice ?? 1;
+  const btnY          = y + 34;
+  const btnW          = 70;
+  const btnH          = 26;
+  const ouiX          = x + width / 2 - btnW - 12;
+  const nonX          = x + width / 2 + 12;
+
+  ctx.fillStyle   = confirmChoice === 0 ? "#8b0000" : "#2a2a2a";
+  ctx.fillRect(ouiX, btnY, btnW, btnH);
+  ctx.strokeStyle = confirmChoice === 0 ? "#ff4444" : "#555";
+  ctx.lineWidth   = confirmChoice === 0 ? 2 : 1;
+  ctx.strokeRect(ouiX, btnY, btnW, btnH);
+  ctx.fillStyle   = confirmChoice === 0 ? "#ff4444" : "#666";
+  ctx.font        = "13px monospace";
+  ctx.textAlign   = "center";
+  ctx.fillText("Oui", ouiX + btnW / 2, btnY + 7);
+
+  ctx.fillStyle   = confirmChoice === 1 ? "#003300" : "#2a2a2a";
+  ctx.fillRect(nonX, btnY, btnW, btnH);
+  ctx.strokeStyle = confirmChoice === 1 ? "#44ff44" : "#555";
+  ctx.lineWidth   = confirmChoice === 1 ? 2 : 1;
+  ctx.strokeRect(nonX, btnY, btnW, btnH);
+  ctx.fillStyle   = confirmChoice === 1 ? "#44ff44" : "#666";
+  ctx.fillText("Non", nonX + btnW / 2, btnY + 7);
+
+  ctx.textAlign = "left";
+}
+
+// ─── Aptitude au combat — affiché sous les listes d'armes ────────────────────
+
+function drawCombatAptitude(ctx, x, y, width, campState, player) {
+  if (!player?.stats || !campState.inventory) return;
+
+  const inventory    = campState.inventory;
+  const rightItem    = inventory.find(i => i.equippedSlot === "rightHand");
+  const leftItem     = inventory.find(i => i.equippedSlot === "leftHand");
+
+  const rightDef     = rightItem ? gameData.weapons.find(w => w.code === rightItem.itemCode) : null;
+  const leftDef      = leftItem  ? gameData.weapons.find(w => w.code === leftItem.itemCode)  : null;
+  const leftIsShield = leftDef ? (leftDef.damFirst === 0 && leftDef.damLast === 0) : false;
+
+  if (!rightDef && !leftDef) return;
+
+  const messages = computeEquipMessages(
+    player.stats, player.name, rightDef, leftDef, leftIsShield,
+    rightItem?.tier ?? 1, leftItem?.tier ?? 1
+  );
+
+  // ─── Titre ────────────────────────────────────────────────────────────────
+
+  let currentY = y;
+
+  ctx.fillStyle = "#888";
+  ctx.font      = "13px monospace";
+  ctx.fillText("Aptitude au combat", x, currentY);
+  currentY += 8;
+
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, currentY + 14);
+  ctx.lineTo(x + width, currentY + 14);
+  ctx.stroke();
+  currentY += 28;
+
+  // ─── Messages ─────────────────────────────────────────────────────────────
+
+  const lineH = 18;
+  const maxW  = width;
+
+  ctx.font = "12px monospace";
+
+  for (const msg of messages) {
+    ctx.fillStyle = "white";
+
+    const words = msg.split(" ");
+    let   line  = "";
+
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxW && line) {
+        ctx.fillText(line, x, currentY);
+        currentY += lineH;
+        line      = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) {
+      ctx.fillText(line, x, currentY);
+      currentY += lineH;
+    }
+    currentY += 6;
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getCompatibleItems(inventory, hand) {
+export function getCompatibleItems(inventory, hand) {
   const rightHandItem = inventory.find(i => i.equippedSlot === "rightHand");
   const twoHanded     = rightHandItem && getWeaponDef(rightHandItem)?.hd === 2;
 
   if (hand === "left" && twoHanded) return [];
 
-  return inventory.filter(function isCompatible(item) {
+  const items = inventory.filter(function isCompatible(item) {
     if (item.itemType !== "weapon") return false;
     const def = getWeaponDef(item);
     if (!def) return false;
@@ -406,6 +569,18 @@ function getCompatibleItems(inventory, hand) {
     }
     return def.damFirst > 0 || def.damLast > 0;
   });
+
+  items.sort(function sortByTypeAndModel(a, b) {
+    const defA = getWeaponDef(a);
+    const defB = getWeaponDef(b);
+    const typeA = defA?.weaponType ?? "";
+    const typeB = defB?.weaponType ?? "";
+    if (typeA < typeB) return -1;
+    if (typeA > typeB) return  1;
+    return (a.tier ?? 1) - (b.tier ?? 1);
+  });
+
+  return items;
 }
 
 function getWeaponDef(item) {

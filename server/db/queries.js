@@ -160,6 +160,23 @@ export function removeItem(itemId) {
   db.prepare("DELETE FROM inventory WHERE id = ?").run(itemId);
 }
 
+export function updateItemAffinities(itemId, affinities) {
+  db.prepare(`
+    UPDATE inventory
+    SET aff_bestial = ?, aff_elementaire = ?, aff_feerique = ?,
+        aff_demoniaque = ?, aff_undead = ?, aff_reptilien = ?
+    WHERE id = ?
+  `).run(
+    affinities.bestial,
+    affinities.elementaire,
+    affinities.feerique,
+    affinities.demoniaque,
+    affinities.undead,
+    affinities.reptilien,
+    itemId
+  );
+}
+
 // ─── Floors ───────────────────────────────────────────────────────────────────
 
 export function saveFloor(runId, etage, dungeon) {

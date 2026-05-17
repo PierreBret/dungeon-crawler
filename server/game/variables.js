@@ -1,11 +1,12 @@
-/**
- * COMBAT CONFIG — Configuration externalisée du moteur de combat.
- *
- * Seules les variables explicitement marquées "Variable configurable dans combatConfig.js"
- * dans le pseudo-code sont présentes ici, plus les paramètres d'initialisation
- * nécessaires au calcul des compétences dérivées.
- */
+/*
+  SERVER/GAME/VARIABLES.JS
+  Variables globales du jeu — fichier unique de configuration.
+*/
 
+// ─── Mode développement ───────────────────────────────────────────────────────
+export const DEV_MODE = false;
+
+// ─── Configuration du combat ──────────────────────────────────────────────────
 export const COMBAT = {
   // ─── Variables configurables (pseudo-code) ──────────────────────────────────
   nbTempoParMinute: 20,       // NBTEMPOPARMMINUTE

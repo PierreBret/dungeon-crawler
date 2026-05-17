@@ -20,22 +20,24 @@
  * @param {object|null} rightDef — def arme main droite (ou null)
  * @param {object|null} leftDef  — def arme main gauche (ou null)
  * @param {boolean} leftIsShield — true si main gauche est un bouclier
+ * @param {number} rightTier     — tier de l'arme main droite (défaut 1)
+ * @param {number} leftTier      — tier de l'arme main gauche (défaut 1)
  * @returns {string[]}
  */
-export function computeEquipMessages(playerStats, playerName, rightDef, leftDef, leftIsShield) {
+export function computeEquipMessages(playerStats, playerName, rightDef, leftDef, leftIsShield, rightTier, leftTier) {
   if (!playerStats) throw new Error("computeEquipMessages: playerStats manquant");
   if (!playerName)  throw new Error("computeEquipMessages: playerName manquant");
 
   const messages = [];
 
   if (rightDef) {
-    for (const msg of checkWeaponConstraints(playerStats, playerName, rightDef, false)) {
+    for (const msg of checkWeaponConstraints(playerStats, playerName, rightDef, false, rightTier ?? 1)) {
       messages.push(msg);
     }
   }
 
   if (leftDef && !leftIsShield) {
-    for (const msg of checkWeaponConstraints(playerStats, playerName, leftDef, true)) {
+    for (const msg of checkWeaponConstraints(playerStats, playerName, leftDef, true, leftTier ?? 1)) {
       messages.push(msg);
     }
   }
@@ -57,12 +59,12 @@ export function computeEquipMessages(playerStats, playerName, rightDef, leftDef,
 
 // ─── Contraintes d'une arme ───────────────────────────────────────────────────
 
-function checkWeaponConstraints(stats, name, def, isLeftHand) {
+function checkWeaponConstraints(stats, name, def, isLeftHand, tier) {
   if (!def) throw new Error("checkWeaponConstraints: def manquant");
 
   const messages = [];
   const slot     = isLeftHand ? "main gauche" : "main droite";
-  const model    = def.models?.[0] ?? def.typeArme;
+  const model    = def.models?.[(tier ?? 1) - 1] ?? def.typeArme;
 
   // Force
   if (stats.force + 2 < def.fo) {
@@ -116,9 +118,9 @@ function checkAmbidexterity(stats, name, rightDef, leftDef) {
 
 // ─── Résumé équipement ────────────────────────────────────────────────────────
 
-function buildEquipSummary(rightDef, leftDef, leftIsShield) {
-  const rightName = rightDef ? (rightDef.models?.[0] ?? rightDef.typeArme) : null;
-  const leftName  = leftDef  ? (leftDef.models?.[0]  ?? leftDef.typeArme)  : null;
+function buildEquipSummary(rightDef, leftDef, leftIsShield, rightTier, leftTier) {
+  const rightName = rightDef ? (rightDef.models?.[(rightTier ?? 1) - 1] ?? rightDef.typeArme) : null;
+  const leftName  = leftDef  ? (leftDef.models?.[(leftTier ?? 1) - 1]  ?? leftDef.typeArme)  : null;
 
   if (rightName && leftName) {
     return leftIsShield ? `${rightName} avec bouclier` : `${rightName} et ${leftName}`;

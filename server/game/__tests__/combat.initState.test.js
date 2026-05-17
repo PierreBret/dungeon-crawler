@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { initCombatState } from '../combat.js';
-import { COMBAT } from '../combatConfig.js';
+import { COMBAT } from '../variables.js';
 
 /**
  * Unit tests for initCombatState

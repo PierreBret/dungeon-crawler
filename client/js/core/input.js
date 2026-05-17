@@ -3,11 +3,13 @@
   Gère les entrées clavier du joueur.
 */
 
-import { SCREENS, CAMP_OPTIONS } from "./constants.js";
+import { SCREENS, CAMP_OPTIONS, MATERIALS } from "./constants.js";
 import { socket }                from "./socket.js";
 import { handleEquipKeys }       from "../ui/components/equipPanel.js";
+import { handleArmorEquipKeys }  from "../ui/components/equiparmorpanel.js";
+import { handleForgeKeys }       from "../ui/components/forgepanel.js";
 import { TRAINABLE_STATS }       from "../ui/training.js";
-import { gameData, MATERIALS }   from "./gameData.js";
+import { gameData }              from "./gameData.js";
 
 export function setupInput(state) {
   window.addEventListener("keydown", (e) => {
@@ -25,6 +27,12 @@ export function setupInput(state) {
 
 function handleDungeonInput(state, e) {
   if (!state.player || !state.dungeon) return;
+
+  // Notification de trésor affichée — Enter pour fermer
+  if (state.treasureDrop) {
+    if (e.key === "Enter") state.treasureDrop = null;
+    return;
+  }
 
   if (state.dungeon.pendingConfirm) {
     handleDungeonConfirmInput(state, e);
@@ -45,6 +53,13 @@ function handleDungeonInput(state, e) {
 
       state.player.position = response.state.player.position;
       if (response.state.dungeon) state.dungeon = response.state.dungeon;
+
+      // Combat automatique déclenché par une créature
+      if (response.creatureCombat) {
+        const ci = response.creatureCombat.creatureIndex;
+        const creature = state.dungeon.creatures[ci];
+        launchCombatPrep(state, { creature });
+      }
     });
   }
 
@@ -74,8 +89,19 @@ function handleDungeonConfirmInput(state, e) {
         if (response.state.dungeon) state.dungeon = response.state.dungeon;
         state.dungeon.pendingConfirm = null;
 
+        // Combat automatique déclenché par une créature (prioritaire)
+        if (response.creatureCombat) {
+          const ci = response.creatureCombat.creatureIndex;
+          const creature = state.dungeon.creatures[ci];
+          launchCombatPrep(state, { creature });
+          return;
+        }
+
         if (response.specialType === "training") launchTraining(state);
         if (response.specialType === "creature") launchCombatPrep(state, confirm.data);
+        if (response.specialType === "forge")    launchForge(state);
+        if (response.specialType === "treasure") launchTreasure(state);
+        if (response.specialType === "exit")     launchNextFloor(state);
       });
     } else {
       state.dungeon.pendingConfirm = null;
@@ -301,6 +327,45 @@ function launchTraining(state) {
   state.screen = SCREENS.TRAINING;
 }
 
+function launchForge(state) {
+  socket.emit("inventory:get", {}, function onInventoryLoaded(response) {
+    if (!response.ok) { console.error("Erreur inventaire :", response.error); return; }
+    state.camp.inventory     = response.inventory;
+    state.camp.forgeIndex    = 0;
+    state.camp.forgeScroll   = 0;
+    state.camp.forgeSelected = [];
+    state.camp.forgePreview  = null;
+    state.camp.mode          = "forge";
+    state.screen             = SCREENS.CAMP;
+  });
+}
+
+function launchTreasure(state) {
+  socket.emit("treasure:loot", {}, function onTreasureLoot(response) {
+    if (!response.ok) { console.error("Erreur treasure:loot :", response.error); return; }
+
+    if (response.drop) {
+      const def = gameData.weapons.find(w => w.code === response.drop.itemCode);
+      response.drop.weaponDef = def;
+      response.drop.matName   = MATERIALS[response.drop.material]?.name ?? "?";
+    }
+
+    // Marquer le trésor comme récupéré côté client
+    if (state.dungeon.treasure) state.dungeon.treasure.looted = true;
+
+    state.treasureDrop = response.drop ?? null;
+  });
+}
+
+function launchNextFloor(state) {
+  socket.emit("dungeon:next", {}, function onNextFloor(response) {
+    if (!response.ok) { console.error("Erreur dungeon:next :", response.error); return; }
+    state.dungeon = response.state.dungeon;
+    state.player  = response.state.player;
+    state.config  = response.state.config;
+  });
+}
+
 function handleTrainingInput(state, e) {
   const training = state.training;
   if (!training) return;
@@ -397,13 +462,12 @@ function handleCampInput(state, e) {
   const camp = state.camp;
 
   if (camp.mode !== "menu") {
-    if (camp.mode === "inventory") {
-      if (e.key === "Escape" && !camp.inventoryConfirm) {
-        camp.mode = "menu"; camp.inventoryIndex = 0; return;
-      }
-      handleInventoryModeInput(state, e);
-    } else if (camp.mode === "equip") {
+    if (camp.mode === "equip") {
       handleEquipModeInput(state, e);
+    } else if (camp.mode === "equipArmor") {
+      handleArmorEquipModeInput(state, e);
+    } else if (camp.mode === "forge") {
+      handleForgeModeInput(state, e);
     } else {
       if (e.key === "Escape") { camp.mode = "menu"; return; }
     }
@@ -422,17 +486,7 @@ function handleCampAction(state, index) {
     case "explore":
       state.screen = SCREENS.DUNGEON;
       break;
-    case "inventory":
-      socket.emit("inventory:get", {}, function onInventoryLoaded(response) {
-        if (!response.ok) return console.error("Erreur inventaire :", response.error);
-        state.camp.inventory              = response.inventory;
-        state.camp.inventoryIndex         = 0;
-        state.camp.inventoryConfirm       = null;
-        state.camp.inventoryConfirmChoice = 1;
-        state.camp.mode                   = "inventory";
-      });
-      break;
-    case "equip":
+    case "equipWeapon":
       socket.emit("inventory:get", {}, function onInventoryLoaded(response) {
         if (!response.ok) return console.error("Erreur inventaire :", response.error);
         state.camp.inventory         = response.inventory;
@@ -441,56 +495,33 @@ function handleCampAction(state, index) {
         state.camp.mode              = "equip";
       });
       break;
+    case "equipArmor":
+      socket.emit("inventory:get", {}, function onInventoryLoaded(response) {
+        if (!response.ok) return console.error("Erreur inventaire :", response.error);
+        state.camp.inventory        = response.inventory;
+        state.camp.armorIndex       = 0;
+        state.camp.armorScroll      = 0;
+        state.camp.armorSelectedSlot = "tete";
+        state.camp.mode             = "equipArmor";
+      });
+      break;
+    case "forge":
+      socket.emit("inventory:get", {}, function onInventoryLoaded(response) {
+        if (!response.ok) return console.error("Erreur inventaire :", response.error);
+        state.camp.inventory     = response.inventory;
+        state.camp.forgeIndex    = 0;
+        state.camp.forgeScroll   = 0;
+        state.camp.forgeSelected = [];
+        state.camp.forgePreview  = null;
+        state.camp.mode          = "forge";
+      });
+      break;
     case "rest":
       state.camp.mode = "rest";
       break;
     case "quit":
       state.screen = SCREENS.CHARACTER_CREATION;
       break;
-  }
-}
-
-function handleInventoryModeInput(state, e) {
-  const camp = state.camp;
-  if (camp.inventoryConfirm) { handleInventoryConfirmInput(state, e); return; }
-
-  const inventory = camp.inventory ?? [];
-  const max       = inventory.length;
-
-  if (e.key === "ArrowDown" && camp.inventoryIndex < max - 1) camp.inventoryIndex++;
-  if (e.key === "ArrowUp"   && camp.inventoryIndex > 0)       camp.inventoryIndex--;
-
-  if (e.key === "Enter" && max > 0) {
-    const item = inventory[camp.inventoryIndex];
-    if (!item) { console.error("handleInventoryModeInput: item introuvable", camp.inventoryIndex); return; }
-    if (!item.equipped && !item.equippedSlot) {
-      camp.inventoryConfirm       = item;
-      camp.inventoryConfirmChoice = 1;
-    }
-  }
-}
-
-function handleInventoryConfirmInput(state, e) {
-  const camp = state.camp;
-  if (e.key === "ArrowLeft")  camp.inventoryConfirmChoice = 0;
-  if (e.key === "ArrowRight") camp.inventoryConfirmChoice = 1;
-
-  if (e.key === "Enter") {
-    if (camp.inventoryConfirmChoice === 0) {
-      const item = camp.inventoryConfirm;
-      if (!item?.id) { console.error("handleInventoryConfirmInput: item manquant", item); camp.inventoryConfirm = null; return; }
-      socket.emit("inventory:drop", { itemId: item.id }, function onDropResponse(response) {
-        if (!response.ok) { console.error("Erreur drop :", response.error); return; }
-        socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
-          if (res.ok) {
-            state.camp.inventory      = res.inventory;
-            state.camp.inventoryIndex = Math.min(camp.inventoryIndex, res.inventory.length - 1);
-          }
-        });
-      });
-    }
-    camp.inventoryConfirm       = null;
-    camp.inventoryConfirmChoice = 1;
   }
 }
 
@@ -519,7 +550,94 @@ function handleEquipModeInput(state, e) {
     state.camp.equipSelectedHand = "right";
   }
 
-  handleEquipKeys(e, state.camp, onEquip, onUnequip, onEscape);
+  function onDrop(itemId) {
+    socket.emit("inventory:drop", { itemId }, function onDropResponse(response) {
+      if (!response.ok) { console.error("Erreur drop :", response.error); return; }
+      socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
+        if (res.ok) {
+          state.camp.inventory   = res.inventory;
+          state.camp.equipIndex  = Math.min(state.camp.equipIndex, Math.max(0, res.inventory.length - 1));
+        }
+      });
+    });
+  }
+
+  handleEquipKeys(e, state.camp, onEquip, onUnequip, onEscape, onDrop);
+}
+
+function handleArmorEquipModeInput(state, e) {
+  function onEquip(itemId, slot) {
+    socket.emit("inventory:equip", { itemId, slot }, function onEquipResponse(response) {
+      if (!response.ok) console.error("Erreur equip armor :", response.error);
+      else socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
+        if (res.ok) state.camp.inventory = res.inventory;
+      });
+    });
+  }
+
+  function onUnequip(itemId) {
+    socket.emit("inventory:unequip", { itemId }, function onUnequipResponse(response) {
+      if (!response.ok) console.error("Erreur unequip armor :", response.error);
+      else socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
+        if (res.ok) state.camp.inventory = res.inventory;
+      });
+    });
+  }
+
+  function onEscape() {
+    state.camp.mode             = "menu";
+    state.camp.armorIndex       = 0;
+    state.camp.armorScroll      = 0;
+    state.camp.armorSelectedSlot = "tete";
+  }
+
+  function onDrop(itemId) {
+    socket.emit("inventory:drop", { itemId }, function onDropResponse(response) {
+      if (!response.ok) { console.error("Erreur drop :", response.error); return; }
+      socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
+        if (res.ok) {
+          state.camp.inventory  = res.inventory;
+          state.camp.armorIndex = Math.min(state.camp.armorIndex, Math.max(0, res.inventory.length - 1));
+        }
+      });
+    });
+  }
+
+  handleArmorEquipKeys(e, state.camp, onEquip, onUnequip, onEscape, onDrop);
+}
+
+function handleForgeModeInput(state, e) {
+  function onPreview(itemIdA, itemIdB) {
+    socket.emit("forge:preview", { itemIdA, itemIdB }, function onPreviewResponse(response) {
+      state.camp.forgePreview = response;
+    });
+  }
+
+  function onConfirm(itemIdA, itemIdB) {
+    socket.emit("forge:confirm", { itemIdA, itemIdB }, function onConfirmResponse(response) {
+      if (!response.ok) { console.error("Erreur forge:confirm :", response.error); return; }
+      // Recharger l'inventaire et réinitialiser la sélection
+      socket.emit("inventory:get", {}, function onInventoryRefresh(res) {
+        if (res.ok) {
+          state.camp.inventory     = res.inventory;
+          state.camp.forgeIndex    = 0;
+          state.camp.forgeScroll   = 0;
+          state.camp.forgeSelected = [];
+          state.camp.forgePreview  = null;
+        }
+      });
+    });
+  }
+
+  function onEscape() {
+    state.camp.mode          = "menu";
+    state.camp.forgeIndex    = 0;
+    state.camp.forgeScroll   = 0;
+    state.camp.forgeSelected = [];
+    state.camp.forgePreview  = null;
+  }
+
+  handleForgeKeys(e, state.camp, onPreview, onConfirm, onEscape);
 }
 
 // ─── Création de personnage ───────────────────────────────────────────────────

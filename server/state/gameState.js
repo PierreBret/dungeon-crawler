@@ -34,7 +34,8 @@ class GameSession {
         creatures: this.dungeon.creatures,
         forge:     this.dungeon.forge,
         training:  this.dungeon.training,
-        exit:      this.dungeon.exit
+        exit:      this.dungeon.exit,
+        treasure:  this.dungeon.treasure
       },
       player: {
         name:          this.player.name,

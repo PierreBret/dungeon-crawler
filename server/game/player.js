@@ -3,7 +3,7 @@
   Logique métier du joueur — côté serveur uniquement.
 */
 
-import { COMBAT } from "./combatConfig.js";
+import { COMBAT } from "./variables.js";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 

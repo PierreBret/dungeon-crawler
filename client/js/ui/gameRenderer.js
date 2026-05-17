@@ -20,7 +20,7 @@ export function renderGame(state) {
       drawCharacterCreation(ctx, characterCreation.candidates, characterCreation.selectedIndex);
       break;
     case SCREENS.DUNGEON:
-      drawDungeon(ctx, dungeon, player, state.config);
+      drawDungeon(ctx, dungeon, player, state.config, state.treasureDrop, state.devMode);
       break;
     case SCREENS.CAMP:
       drawCamp(ctx, player, state.camp);

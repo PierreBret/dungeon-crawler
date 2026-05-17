@@ -8,7 +8,7 @@
   Point d'entrée : resolveCombat(playerData, creatureData, rng?)
 */
 
-import { COMBAT } from "./combatConfig.js";
+import { COMBAT } from "./variables.js";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -485,7 +485,9 @@ export function phaseAttaque(state, rng) {
   const attackQuality = att.effective.attaque - d100;
 
   // Log "ATT.NOM attaque avec ATT.WEAPON.NAME"
-  log(state, 'attack', `${att.name} attaque avec ${att.weaponName}`);
+  const attackModelIndex = (att.weapon?.tier ?? 1) - 1;
+  const attackModelName = att.weapon?.models?.[attackModelIndex] ?? att.weaponName;
+  log(state, 'attack', `${att.name} attaque avec ${attackModelName}`);
 
   // ATT.END = ATT.END - COUTENDURANCEATTAQUE
   att.endurance -= attackCost;
@@ -751,8 +753,8 @@ export function phaseResolutionDegats(state) {
  *
  * ATT.D100 = JetD100()
  * ATT.INITIATIVEQUALITY = ATT.INITIATIVE - ATT.D100 - ATT.FATIGUE
- * si < 0 → goto Phase fin de boucle
- * sinon → Log("ATT.NOM enchaîne les attaques"), goto Phase Attaque
+ * si < 0 → log("ATT.NOM cherche une ouverture"), goto Phase fin de boucle
+ * sinon → log("ATT.NOM enchaîne les attaques"), NEXTPHASE = Phase Attaque, goto Phase fin de boucle
  *
  * @param {CombatState} state - État courant du combat
  * @param {Function} rng - Générateur aléatoire
@@ -766,23 +768,24 @@ export function phaseInitiative(state, rng) {
   // ATT.INITIATIVEQUALITY = ATT.INITIATIVE - ATT.D100 - ATT.FATIGUE
   const initiativeQuality = att.effective.initiative - d100 - att.fatigue;
 
+  // logDev("(Initiative : ATT.INITIATIVE | D100 : ATT.D100 | Fatigue : ATT.FATIGUE | Qualité : ATT.INITIATIVEQUALITY)")
+  logDev(state, 'debug', `(Initiative : ${att.effective.initiative} | D100 : ${d100} | Fatigue : ${att.fatigue} | Qualité : ${initiativeQuality})`);
+
   if (initiativeQuality < 0) {
-    // LogDev("(Initiative : ATT.INITIATIVE | D100 : ATT.D100 | Fatigue : ATT.FATIGUE | Qualité : ATT.INITIATIVEQUALITY)")
-    logDev(state, 'debug', `(Initiative : ${att.effective.initiative} | D100 : ${d100} | Fatigue : ${att.fatigue} | Qualité : ${initiativeQuality})`);
-    // goto Phase fin de boucle
+    // log("ATT.NOM cherche une ouverture")
+    log(state, 'initiative', `${att.name} cherche une ouverture`);
     state.initiativeResult = 'lost';
   } else {
-    // Log("ATT.NOM enchaîne les attaques")
+    // log("ATT.NOM enchaîne les attaques")
     log(state, 'initiative', `${att.name} enchaîne les attaques`);
-    // LogDev("(Initiative : ATT.INITIATIVE | D100 : ATT.D100 | Fatigue : ATT.FATIGUE | Qualité : ATT.INITIATIVEQUALITY)")
-    logDev(state, 'debug', `(Initiative : ${att.effective.initiative} | D100 : ${d100} | Fatigue : ${att.fatigue} | Qualité : ${initiativeQuality})`);
-    log(state, 'initiative', '');
-    flushLogs(state);
-    // NEXTPHASE = Phase Attaque, goto fin de boucle
+    // NEXTPHASE = Phase Attaque
     state.nextPhase = 'attaque';
     state.initiativeResult = 'kept';
   }
 
+  // log("")
+  log(state, 'initiative', '');
+  // goto Phase fin de boucle
   return state;
 }
 
@@ -793,18 +796,14 @@ export function phaseInitiative(state, rng) {
  *
  * DEF.D100 = JetD100()
  * DEF.RIPOSTEQUALITY = DEF.RIPOSTE - DEF.D100 - DEF.FATIGUE
- * si < 0 → Log("DEF.NOM rate une opportunité de riposte"), goto Phase fin de boucle
- * sinon → Log("DEF.NOM contre-attaque !"), Swap(ATT, DEF), goto Phase d'attaque
+ * si < 0 → log("DEF.NOM rate une opportunité de riposte"), goto Phase fin de boucle
+ * sinon → log("DEF.NOM contre-attaque !"), Swap(ATT, DEF), NEXTPHASE = Phase Attaque, goto Phase fin de boucle
  *
  * @param {CombatState} state - État courant du combat
  * @param {Function} rng - Générateur aléatoire
  * @returns {CombatState} État mis à jour
  */
 export function phaseRiposte(state, rng) {
-  if (state.initiativeResult !== 'lost') {
-    return state;
-  }
-
   const defKey = state.attacker === 'player' ? 'creature' : 'player';
   const def = state[defKey];
 
@@ -813,27 +812,26 @@ export function phaseRiposte(state, rng) {
   // DEF.RIPOSTEQUALITY = DEF.RIPOSTE - DEF.D100 - DEF.FATIGUE
   const riposteQuality = def.effective.riposte - d100 - def.fatigue;
 
+  // logDev("(Riposte : DEF.RIPOSTE | D100 : DEF.D100 | Fatigue : DEF.FATIGUE | Qualité : DEF.RIPOSTEQUALITY)")
+  logDev(state, 'debug', `(Riposte : ${def.effective.riposte} | D100 : ${d100} | Fatigue : ${def.fatigue} | Qualité : ${riposteQuality})`);
+
   if (riposteQuality < 0) {
-    // Log("DEF.NOM rate une opportunité de riposte")
+    // log("DEF.NOM rate une opportunité de riposte")
     log(state, 'riposte', `${def.name} rate une opportunité de riposte`);
-    // LogDev("(Riposte : DEF.RIPOSTE | D100 : DEF.D100 | Fatigue : DEF.FATIGUE | Qualité : DEF.RIPOSTEQUALITY)")
-    logDev(state, 'debug', `(Riposte : ${def.effective.riposte} | D100 : ${d100} | Fatigue : ${def.fatigue} | Qualité : ${riposteQuality})`);
-    // goto Phase fin de boucle
     state.riposteResult = 'fail';
   } else {
-    // Log("DEF.NOM contre-attaque !")
+    // log("DEF.NOM contre-attaque !")
     log(state, 'riposte', `${def.name} contre-attaque !`);
-    // LogDev("(Riposte : DEF.RIPOSTE | D100 : DEF.D100 | Fatigue : DEF.FATIGUE | Qualité : DEF.RIPOSTEQUALITY)")
-    logDev(state, 'debug', `(Riposte : ${def.effective.riposte} | D100 : ${d100} | Fatigue : ${def.fatigue} | Qualité : ${riposteQuality})`);
     // Swap(ATT, DEF)
     state.attacker = defKey;
-    log(state, 'riposte', '');
-    flushLogs(state);
-    // NEXTPHASE = Phase Attaque, goto fin de boucle
+    // NEXTPHASE = Phase Attaque
     state.nextPhase = 'attaque';
     state.riposteResult = 'success';
   }
 
+  // log("")
+  log(state, 'riposte', '');
+  // goto Phase fin de boucle
   return state;
 }
 
@@ -1112,13 +1110,7 @@ export function mainLoop(state, config, rng) {
 
       // Si attaque ratée → goto Phase de riposte
       if (state.attackResult === 'miss') {
-        state.initiativeResult = 'lost';
         state = phaseRiposte(state, rng);
-
-        if (state.riposteResult === 'success') {
-          // NEXTPHASE = Phase Attaque, goto fin de boucle
-          break;
-        }
         // goto Phase fin de boucle
         break;
       }
@@ -1127,13 +1119,8 @@ export function mainLoop(state, config, rng) {
       state = phaseDefense(state, rng);
 
       if (state.defenseResult === 'success') {
-        state.initiativeResult = 'lost';
         state = phaseRiposte(state, rng);
-
-        if (state.riposteResult === 'success') {
-          // NEXTPHASE = Phase Attaque, goto fin de boucle
-          break;
-        }
+        // goto Phase fin de boucle
         break;
       }
 
@@ -1147,20 +1134,7 @@ export function mainLoop(state, config, rng) {
       // ─── Phase d'initiative ─────────────────────────────────────────────
       state = phaseInitiative(state, rng);
 
-      if (state.initiativeResult === 'kept') {
-        // NEXTPHASE = Phase Attaque, goto fin de boucle
-        break;
-      }
-
-      // initiativeResult === 'lost' → Phase de riposte
-      state = phaseRiposte(state, rng);
-
-      if (state.riposteResult === 'success') {
-        // NEXTPHASE = Phase Attaque, goto fin de boucle
-        break;
-      }
-
-      // goto Phase fin de boucle
+      // goto Phase fin de boucle (both outcomes)
       break;
     }
 
@@ -1195,7 +1169,6 @@ export function mainLoop(state, config, rng) {
       testEndurance(state[attKey], state, rng);
       testEndurance(state[defKey], state, rng);
 
-      log(state, 'separator', '');
       flushLogs(state);
 
       // goto Phase début minute
@@ -1231,7 +1204,6 @@ export function mainLoop(state, config, rng) {
       testEndurance(state[attKey], state, rng);
       testEndurance(state[defKey], state, rng);
 
-      log(state, 'separator', '');
       flushLogs(state);
 
       // goto Phase de vivacité
@@ -1435,7 +1407,7 @@ export function resolveCombat(playerData, creatureData, optionsOrRng = {}) {
 
   // ─── Phase début du combat ────────────────────────────────────────────────
   log(state, 'separator', `=== Début du combat ===`);
-  // Presentation(C1) — commenté dans la spec
+  presentationCombattant(state.player, state);
   equipementCombattant(state.player, state);
   presentationCombattant(state.creature, state);
   equipementCombattant(state.creature, state);

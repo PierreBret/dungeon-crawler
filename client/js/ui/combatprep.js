@@ -15,8 +15,9 @@
     Échap  : retour au donjon
 */
 
-import { THEME }               from "../core/theme.js";
-import { gameData, MATERIALS } from "../core/gameData.js";
+import { THEME }     from "../core/theme.js";
+import { MATERIALS } from "../core/constants.js";
+import { gameData }  from "../core/gameData.js";
 
 // ─── Draw principal ───────────────────────────────────────────────────────────
 
@@ -70,7 +71,9 @@ function drawCreaturePanel(ctx, creature, x, y, w, h, padding) {
   cy += 24;
 
   const weaponDef = gameData.weapons.find(w => w.code === creature.equipment?.rightHand?.code);
-  ctx.fillText(`Arme : ${weaponDef?.typeArme ?? "—"}`, cx, cy);
+  const creatureWeaponTier = creature.equipment?.rightHand?.tier ?? 1;
+  const creatureWeaponModel = weaponDef?.models?.[(creatureWeaponTier) - 1] ?? weaponDef?.typeArme ?? "—";
+  ctx.fillText(`Arme : ${creatureWeaponModel}`, cx, cy);
   cy += 40;
 
   ctx.strokeStyle = THEME.ui.border;

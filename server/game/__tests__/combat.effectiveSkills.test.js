@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeEffectiveSkills } from '../combat.js';
-import { COMBAT } from '../combatConfig.js';
+import { COMBAT } from '../variables.js';
 
 describe('computeEffectiveSkills', () => {
   const neutralPercentages = {

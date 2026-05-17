@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeToPercent } from '../combat.js';
-import { COMBAT } from '../combatConfig.js';
+import { COMBAT } from '../variables.js';
 
 describe('normalizeToPercent', () => {
   it('applies the formula floor(skill × multiplier / divisor)', () => {

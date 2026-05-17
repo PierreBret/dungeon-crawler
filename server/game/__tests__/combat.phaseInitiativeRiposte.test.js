@@ -4,11 +4,10 @@ import { phaseInitiative, phaseRiposte } from '../combat.js';
 /**
  * Unit tests for phaseInitiative and phaseRiposte
  *
- * Note: phaseInitiative appelle flushLogs() en cas de succès (les entrées vont dans state.log).
- * En cas d'échec, seul logDev est appelé (rien dans state.log en non-devMode, entrées dans logBuffer en devMode).
- *
- * phaseRiposte appelle flushLogs() en cas de succès (les entrées vont dans state.log).
- * En cas d'échec, log() est appelé mais pas flushLogs() (entrées dans logBuffer).
+ * Conformes au pseudo-code :
+ * - phaseInitiative appelle toujours log("") + flushlogs() (les deux cas).
+ * - phaseRiposte appelle toujours log("") + flushlogs() (les deux cas).
+ * - phaseRiposte n'a plus de garde sur initiativeResult.
  */
 
 /**
@@ -31,7 +30,8 @@ function makeState({ attacker = 'player', playerInitiative = 50, creatureRiposte
     log: [],
     logBuffer: [],
     initiativeResult: null,
-    riposteResult: null
+    riposteResult: null,
+    nextPhase: null
   };
 }
 
@@ -54,25 +54,25 @@ describe('phaseInitiative', () => {
     const result = phaseInitiative(state, rng);
 
     expect(result.initiativeResult).toBe('kept');
-    // flushLogs() est appelé → entrées dans state.log
-    // log("enchaîne") + log("") = 2 entrées
-    expect(result.log.length).toBe(2);
-    expect(result.log[0].type).toBe('initiative');
-    expect(result.log[0].text).toContain('enchaîne les attaques');
+    expect(result.nextPhase).toBe('attaque');
+    // Pas de flushLogs → entrées dans logBuffer
+    expect(result.log.length).toBe(0);
+    expect(result.logBuffer.some(l => l.type === 'initiative' && l.text.includes('enchaîne les attaques'))).toBe(true);
   });
 
   it('ATT loses initiative when roll fails (quality < 0)', () => {
     // rng returns 0.99 → d100 = floor(0.99*100)+1 = 100
     // quality = 50 - 100 - 0 = -50 < 0 → fail
-    // Pseudo-code: only LogDev (no visible Log) when initiative fails
     const state = makeState({ attacker: 'player', playerInitiative: 50, playerFatigue: 0 });
     const rng = fixedRng([0.99]);
 
     const result = phaseInitiative(state, rng);
 
     expect(result.initiativeResult).toBe('lost');
-    expect(result.log.length).toBe(0); // no flushLogs called, logDev only
-    expect(result.logBuffer.length).toBe(0); // devMode=false → nothing in buffer either
+    expect(result.nextPhase).toBeNull();
+    // Pas de flushLogs → entrées dans logBuffer
+    expect(result.log.length).toBe(0);
+    expect(result.logBuffer.some(l => l.type === 'initiative' && l.text.includes('cherche une ouverture'))).toBe(true);
   });
 
   it('uses creature stats when creature is ATT', () => {
@@ -85,7 +85,7 @@ describe('phaseInitiative', () => {
     const result = phaseInitiative(state, rng);
 
     expect(result.initiativeResult).toBe('kept');
-    expect(result.log[0].text).toContain('Créature');
+    expect(result.logBuffer.some(l => l.text.includes('Créature'))).toBe(true);
   });
 
   it('fatigue reduces quality and can cause failure', () => {
@@ -97,6 +97,7 @@ describe('phaseInitiative', () => {
     const result = phaseInitiative(state, rng);
 
     expect(result.initiativeResult).toBe('lost');
+    expect(result.logBuffer.some(l => l.text.includes('cherche une ouverture'))).toBe(true);
   });
 
   it('boundary: quality exactly 0 means success', () => {
@@ -110,9 +111,10 @@ describe('phaseInitiative', () => {
     const result = phaseInitiative(state, rng);
 
     expect(result.initiativeResult).toBe('kept');
+    expect(result.nextPhase).toBe('attaque');
   });
 
-  it('devMode: logDev entries appear in logBuffer when initiative fails', () => {
+  it('devMode: logDev entries appear in logBuffer after phase', () => {
     const state = makeState({ attacker: 'player', playerInitiative: 50, playerFatigue: 0 });
     state.devMode = true;
     const rng = fixedRng([0.99]);
@@ -120,55 +122,47 @@ describe('phaseInitiative', () => {
     const result = phaseInitiative(state, rng);
 
     expect(result.initiativeResult).toBe('lost');
-    expect(result.log.length).toBe(0); // no flushLogs called
-    expect(result.logBuffer.length).toBe(1); // logDev entry in buffer
+    // Pas de flushLogs → tout dans logBuffer
+    expect(result.log.length).toBe(0);
+    // logDev (debug) + log("cherche une ouverture") + log("") = 3 entrées dans logBuffer
+    expect(result.logBuffer.length).toBe(3);
     expect(result.logBuffer[0].type).toBe('debug');
+    expect(result.logBuffer[1].text).toContain('cherche une ouverture');
+    expect(result.logBuffer[2].text).toBe('');
   });
 });
 
 describe('phaseRiposte', () => {
-  it('skips riposte when initiativeResult is not "lost"', () => {
-    const state = makeState({ attacker: 'player' });
-    state.initiativeResult = 'kept';
-    const rng = fixedRng([0.5]);
-
-    const result = phaseRiposte(state, rng);
-
-    expect(result.riposteResult).toBeNull();
-    expect(result.log.length).toBe(0);
-    expect(result.logBuffer.length).toBe(0);
-    expect(result.attacker).toBe('player');
-  });
-
   it('DEF riposte succeeds and inverts roles', () => {
     // ATT is player, DEF is creature
     // rng returns 0.1 → d100 = 11
     // creature riposte = 50, quality = 50 - 11 - 0 = 39 >= 0 → success
     const state = makeState({ attacker: 'player', creatureRiposte: 50, creatureFatigue: 0 });
-    state.initiativeResult = 'lost';
     const rng = fixedRng([0.1]);
 
     const result = phaseRiposte(state, rng);
 
     expect(result.riposteResult).toBe('success');
-    expect(result.attacker).toBe('creature'); // roles inverted
-    // flushLogs() appelé → entrées dans state.log
-    expect(result.log.some(l => l.type === 'riposte' && l.text.includes('contre-attaque'))).toBe(true);
+    expect(result.attacker).toBe('creature'); // roles inverted (Swap)
+    expect(result.nextPhase).toBe('attaque');
+    // Pas de flushLogs → entrées dans logBuffer
+    expect(result.log.length).toBe(0);
+    expect(result.logBuffer.some(l => l.type === 'riposte' && l.text.includes('contre-attaque'))).toBe(true);
   });
 
-  it('DEF riposte fails and tempo ends', () => {
+  it('DEF riposte fails', () => {
     // ATT is player, DEF is creature
     // rng returns 0.99 → d100 = 100
     // creature riposte = 50, quality = 50 - 100 - 0 = -50 < 0 → fail
     const state = makeState({ attacker: 'player', creatureRiposte: 50, creatureFatigue: 0 });
-    state.initiativeResult = 'lost';
     const rng = fixedRng([0.99]);
 
     const result = phaseRiposte(state, rng);
 
     expect(result.riposteResult).toBe('fail');
     expect(result.attacker).toBe('player'); // roles NOT inverted
-    // Pas de flushLogs() → entrées dans logBuffer
+    expect(result.nextPhase).toBeNull();
+    // Pas de flushLogs → entrées dans logBuffer
     expect(result.log.length).toBe(0);
     expect(result.logBuffer.some(l => l.type === 'riposte' && l.text.includes('rate'))).toBe(true);
   });
@@ -180,14 +174,15 @@ describe('phaseRiposte', () => {
     const state = makeState({ attacker: 'creature' });
     state.player.effective.riposte = 50;
     state.player.fatigue = 0;
-    state.initiativeResult = 'lost';
     const rng = fixedRng([0.1]);
 
     const result = phaseRiposte(state, rng);
 
     expect(result.riposteResult).toBe('success');
     expect(result.attacker).toBe('player'); // player takes over as ATT
-    expect(result.log.some(l => l.text.includes('Joueur'))).toBe(true);
+    // Pas de flushLogs → entrées dans logBuffer
+    expect(result.log.length).toBe(0);
+    expect(result.logBuffer.some(l => l.text.includes('Joueur'))).toBe(true);
   });
 
   it('fatigue affects riposte roll', () => {
@@ -195,7 +190,6 @@ describe('phaseRiposte', () => {
     // rng returns 0.3 → d100 = 31
     // creature riposte = 50, fatigue = 20, quality = 50 - 31 - 20 = -1 < 0 → fail
     const state = makeState({ attacker: 'player', creatureRiposte: 50, creatureFatigue: 20 });
-    state.initiativeResult = 'lost';
     const rng = fixedRng([0.3]);
 
     const result = phaseRiposte(state, rng);
@@ -204,14 +198,17 @@ describe('phaseRiposte', () => {
     expect(result.attacker).toBe('player');
   });
 
-  it('does nothing when initiativeResult is null', () => {
-    const state = makeState({ attacker: 'player' });
-    state.initiativeResult = null;
-    const rng = fixedRng([0.5]);
+  it('boundary: quality exactly 0 means success', () => {
+    // creature riposte = 50, fatigue = 0, need d100 = 50
+    // rng returns 0.49 → d100 = floor(0.49*100)+1 = 50
+    // quality = 50 - 50 - 0 = 0 >= 0 → success
+    const state = makeState({ attacker: 'player', creatureRiposte: 50, creatureFatigue: 0 });
+    const rng = fixedRng([0.49]);
 
     const result = phaseRiposte(state, rng);
 
-    expect(result.riposteResult).toBeNull();
-    expect(result.log.length).toBe(0);
+    expect(result.riposteResult).toBe('success');
+    expect(result.attacker).toBe('creature');
+    expect(result.nextPhase).toBe('attaque');
   });
 });

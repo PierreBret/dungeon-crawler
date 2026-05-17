@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { computeDerivedSkills } from '../combat.js';
-import { COMBAT } from '../combatConfig.js';
+import { COMBAT } from '../variables.js';
 
 describe('computeDerivedSkills', () => {
   it('calculates all 6 derived skills for minimum stats (all 1)', () => {

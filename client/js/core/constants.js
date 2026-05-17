@@ -9,11 +9,11 @@ export const SCREENS = {
 };
 
 export const CAMP_OPTIONS = [
-  { label: "Explorer le donjon", action: "explore"   },
-  { label: "Inventaire",         action: "inventory" },
-  { label: "Équiper",            action: "equip"     },
-  { label: "Se reposer",         action: "rest"      },
-  { label: "Abandonner",         action: "quit"      }
+  { label: "Explorer le donjon",    action: "explore"   },
+  { label: "Equipement (armes)",    action: "equipWeapon"},
+  { label: "Equipement (armures)",  action: "equipArmor"},
+  { label: "Se reposer",            action: "rest"      },
+  { label: "Abandonner",            action: "quit"      }
 ];
 
 export const LAYOUT = {
@@ -37,3 +37,15 @@ export function getLayout(canvasWidth, canvasHeight) {
     height:      canvasHeight,
   };
 }
+
+// Matériaux — index = valeur stockée en BDD (0-7)
+export const MATERIALS = [
+  { name: "Bois"            },  // 0
+  { name: "Cuivre"          },  // 1
+  { name: "Étain"           },  // 2
+  { name: "Bronze"          },  // 3
+  { name: "Fer"             },  // 4
+  { name: "Fonte"           },  // 5
+  { name: "Acier"           },  // 6
+  { name: "Acier damascène" },  // 7
+];

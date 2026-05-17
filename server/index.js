@@ -11,9 +11,11 @@ import { readFileSync }  from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createSession, getSession, deleteSession } from "./state/gameState.js";
-import { handlePlayerAction } from "./game/world.js";
-import { generateCandidate, rollDie } from "./game/player.js";
+import { handlePlayerAction, generateDungeon } from "./game/world.js";
+import { generateCandidate, rollDie, getStartingPosition } from "./game/player.js";
 import { resolveCombat }      from "./game/combat.js";
+import { computeFusionPreview, areCompatible } from "./game/forge.js";
+import { DEV_MODE }           from "./game/variables.js";
 import { initSchema }         from "./db/schema.js";
 import {
   createPlayer              as dbCreatePlayer,
@@ -26,6 +28,7 @@ import {
   unequipItem               as dbUnequipItem,
   unequipSlot               as dbUnequipSlot,
   removeItem                as dbRemoveItem,
+  updateItemAffinities      as dbUpdateItemAffinities,
   saveFloor                 as dbSaveFloor,
   updateRunStatut           as dbUpdateRunStatut,
   incrementStat             as dbIncrementStat,
@@ -36,7 +39,6 @@ initSchema();
 
 // ─── Mode développement ───────────────────────────────────────────────────────
 
-const DEV_MODE = process.env.DEV_MODE === "true";
 console.log(`[Config] DEV_MODE = ${DEV_MODE}`);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -101,6 +103,15 @@ io.on("connection", (socket) => {
         for (const weapon of weapons) {
           dbAddItem(runId, {
             itemType: "weapon", itemCode: weapon.code,
+            tier: 1, material: 0,
+            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+            equipped: 0, equippedSlot: null
+          });
+        }
+        // Armures tier 1 — une par slot
+        for (const slot of ["tete", "corps", "bras", "jambes"]) {
+          dbAddItem(runId, {
+            itemType: "armor", slot,
             tier: 1, material: 0,
             affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
             equipped: 0, equippedSlot: null
@@ -186,6 +197,61 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("forge:preview", (data, callback) => {
+    if (!data.itemIdA || !data.itemIdB) {
+      return callback({ ok: false, error: "2 IDs requis" });
+    }
+    const session = getSession(socket.id);
+    if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
+    try {
+      const inventory = dbGetInventory(session.runId);
+      const itemA = inventory.find(i => i.id === data.itemIdA);
+      const itemB = inventory.find(i => i.id === data.itemIdB);
+      if (!itemA || !itemB) return callback({ ok: false, error: "Objet introuvable" });
+      const preview = computeFusionPreview(itemA, itemB);
+      callback(preview);
+    } catch (err) {
+      callback({ ok: false, error: err.message });
+    }
+  });
+
+  socket.on("forge:confirm", (data, callback) => {
+    if (!data.itemIdA || !data.itemIdB) {
+      return callback({ ok: false, error: "2 IDs requis" });
+    }
+    const session = getSession(socket.id);
+    if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
+    try {
+      const inventory = dbGetInventory(session.runId);
+      const itemA = inventory.find(i => i.id === data.itemIdA);
+      const itemB = inventory.find(i => i.id === data.itemIdB);
+      if (!itemA || !itemB) return callback({ ok: false, error: "Objet introuvable" });
+      const preview = computeFusionPreview(itemA, itemB);
+      if (!preview.ok) return callback(preview);
+
+      // Supprimer les 2 objets
+      dbRemoveItem(data.itemIdA);
+      dbRemoveItem(data.itemIdB);
+
+      // Créer l'objet résultant
+      const newItem = {
+        itemType:    preview.result.itemType,
+        itemCode:    preview.result.itemCode ?? null,
+        slot:        preview.result.slot ?? null,
+        tier:        preview.result.tier,
+        material:    preview.result.material ?? 0,
+        affinities:  preview.result.affinities ?? { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+        equipped:    0,
+        equippedSlot: null
+      };
+      dbAddItem(session.runId, newItem);
+
+      callback({ ok: true, result: preview.result });
+    } catch (err) {
+      callback({ ok: false, error: err.message });
+    }
+  });
+
   socket.on("player:action", (action, callback) => {
     const session = getSession(socket.id);
     if (!session) return callback({ ok: false, error: "Session introuvable" });
@@ -204,7 +270,75 @@ io.on("connection", (socket) => {
       console.error("[player:action] Erreur DB :", err.message);
     }
 
+    // Combat automatique déclenché par une créature qui atteint le joueur
+    if (result.creatureCombat !== undefined) {
+      const creature = session.dungeon.creatures[result.creatureCombat];
+      const creatureDef = bestiary.find(b => b.id === creature.id);
+      const name = creatureDef?.nameFr ?? "une créature";
+      return callback({
+        ok: true,
+        state,
+        specialType: result.specialType ?? null,
+        creatureCombat: {
+          creatureIndex: result.creatureCombat,
+          label: `${name} vous attaque !`
+        }
+      });
+    }
+
     callback({ ok: true, state, specialType: result.specialType ?? null });
+  });
+
+  socket.on("treasure:loot", (data, callback) => {
+    const session = getSession(socket.id);
+    if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
+
+    const treasure = session.dungeon.treasure;
+    if (!treasure || treasure.looted) return callback({ ok: false, error: "Trésor déjà récupéré" });
+
+    treasure.looted = true;
+
+    const etage = session.etage ?? 1;
+    const randomWeapon = weapons[rollDie(0, weapons.length - 1)];
+    const dropTier = rollDie(1, etage + 1);
+    const dropMat  = rollDie(1, etage + 1) - 1;
+
+    const drop = {
+      itemType:   "weapon",
+      itemCode:   randomWeapon.code,
+      tier:       dropTier,
+      material:   dropMat,
+      affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
+    };
+    dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
+
+    try {
+      dbSaveFloor(session.runId, etage, session.dungeon);
+    } catch (err) {
+      console.error("[treasure:loot] Erreur DB :", err.message);
+    }
+
+    callback({ ok: true, drop });
+  });
+
+  socket.on("dungeon:next", (data, callback) => {
+    const session = getSession(socket.id);
+    if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
+
+    session.etage = (session.etage ?? 1) + 1;
+    session.dungeon = generateDungeon(bestiary);
+    session.player.position = getStartingPosition(session.dungeon.grid);
+    session.turn = 0;
+
+    const state = session.getPublicState();
+
+    try {
+      dbSaveFloor(session.runId, session.etage, state.dungeon);
+    } catch (err) {
+      console.error("[dungeon:next] Erreur DB :", err.message);
+    }
+
+    callback({ ok: true, state });
   });
 
   socket.on("training:attempt", (data, callback) => {
@@ -214,6 +348,12 @@ io.on("connection", (socket) => {
     }
     const session = getSession(socket.id);
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
+
+    // En mode normal, un seul entraînement par terrain
+    if (!DEV_MODE && session.dungeon.training?.used) {
+      return callback({ ok: false, error: "Terrain d'entraînement déjà utilisé" });
+    }
+
     try {
       const character     = dbGetCharacter(session.runId);
       const augmentations = JSON.parse(character.augmentations ?? "{}");
@@ -228,6 +368,11 @@ io.on("connection", (socket) => {
         const statKey = data.stat === "volonte" ? "volonté" : data.stat;
         session.player.stats[statKey] = (session.player.stats[statKey] ?? 0) + 1;
         session.augmentations = augmentations;
+      }
+
+      // Marquer le terrain comme utilisé
+      if (!DEV_MODE && session.dungeon.training) {
+        session.dungeon.training.used = true;
       }
 
       callback({ ok: true, success, chance, roll });
@@ -324,23 +469,44 @@ io.on("connection", (socket) => {
         creature.defeated = true;
         dbSaveFloor(session.runId, session.etage ?? 1, session.dungeon);
 
-        const dropDef = creatureDef.drops?.weapon;
-        if (dropDef && Math.random() < (dropDef.chance ?? 1)) {
-          const dungeonLevel = session.etage ?? 1;
-          const maxTier      = Math.min(Math.ceil(dungeonLevel / 10) + 1, 2);
-          const maxMat       = Math.min(Math.ceil(dungeonLevel / 10) + 1, 2);
-          const dropTier     = rollDie(1, maxTier);
-          const dropMat      = rollDie(0, maxMat - 1);
-
-          drop = {
-            itemType:   "weapon",
-            itemCode:   dropDef.code,
-            tier:       dropTier,
-            material:   dropMat,
-            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
-          };
-          dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
+        // ─── Mise à jour affinité de l'arme ─────────────────────────────────
+        if (equippedItem && creatureDef.family) {
+          const AFFINITY_TYPES = ["bestial", "elementaire", "feerique", "demoniaque", "undead", "reptilien"];
+          const familyIndex = AFFINITY_TYPES.indexOf(creatureDef.family);
+          if (familyIndex !== -1) {
+            const affinities = {
+              bestial:      equippedItem.aff_bestial      ?? 0,
+              elementaire:  equippedItem.aff_elementaire  ?? 0,
+              feerique:     equippedItem.aff_feerique     ?? 0,
+              demoniaque:   equippedItem.aff_demoniaque   ?? 0,
+              undead:       equippedItem.aff_undead       ?? 0,
+              reptilien:    equippedItem.aff_reptilien    ?? 0
+            };
+            // +2 pour le type battu
+            affinities[AFFINITY_TYPES[familyIndex]] += 2;
+            // -1 pour les 2 types suivants (cyclique)
+            const next1 = (familyIndex + 1) % AFFINITY_TYPES.length;
+            const next2 = (familyIndex + 2) % AFFINITY_TYPES.length;
+            affinities[AFFINITY_TYPES[next1]] -= 1;
+            affinities[AFFINITY_TYPES[next2]] -= 1;
+            dbUpdateItemAffinities(equippedItem.id, affinities);
+          }
         }
+
+        // ─── Butin : arme aléatoire après chaque victoire ─────────────────────
+        const creatureTier = creatureDef.tier ?? 1;
+        const randomWeapon = weapons[rollDie(0, weapons.length - 1)];
+        const dropTier = rollDie(1, creatureTier);
+        const dropMat  = rollDie(0, creatureTier - 1);
+
+        drop = {
+          itemType:   "weapon",
+          itemCode:   randomWeapon.code,
+          tier:       dropTier,
+          material:   dropMat,
+          affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
+        };
+        dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
       }
 
       callback({
