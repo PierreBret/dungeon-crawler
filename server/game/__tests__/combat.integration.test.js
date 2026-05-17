@@ -5,7 +5,7 @@
  * Tests that resolveCombat works correctly with:
  * - Real data structures from server/index.js
  * - The strategy → tactic rename in the socket handler
- * - Weapon data from weapons.json
+ * - Weapon data from items.json
  * - DEV_MODE parameter passing
  * - 3-parameter signature backward compatibility
  * - Deterministic combat via rollDie injection
@@ -19,10 +19,14 @@ import { resolveCombat } from "../combat.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load real weapon data from weapons.json
-const weapons = JSON.parse(
-  readFileSync(join(__dirname, "../../data/weapons.json"), "utf8")
+// Load real item data from items.json
+const items = JSON.parse(
+  readFileSync(join(__dirname, "../../data/items.json"), "utf8")
 );
+
+// Dérivation : armes + boucliers (tout sauf les armures BO/HE/AR/LE)
+const armorCodes = ["BO", "HE", "AR", "LE"];
+const weapons = items.filter(i => !armorCodes.includes(i.code));
 
 // Load real bestiary data
 const bestiary = JSON.parse(
@@ -120,7 +124,7 @@ describe("Combat Integration Tests", () => {
       }
     });
 
-    it("should work with all weapon types from weapons.json", () => {
+    it("should work with all weapon types from items.json", () => {
       const creatureData = buildCreatureData();
 
       for (const weapon of weapons) {
@@ -176,7 +180,7 @@ describe("Combat Integration Tests", () => {
     });
   });
 
-  describe("Weapon data integration from weapons.json", () => {
+  describe("Weapon data integration from items.json", () => {
     it("should use weapon definitions with all required fields", () => {
       const weaponDef = weapons[0]; // DA (Dagger)
 

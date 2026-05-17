@@ -19,7 +19,8 @@
 */
 
 import { MATERIALS }  from "../../core/constants.js";
-import { gameData }   from "../../core/gameData.js";
+import { gameData, getArmorName, getShieldName }   from "../../core/gameData.js";
+import { WeaponDamage } from "../../core/damagecalc.js";
 
 // ─── Ratios fixes ─────────────────────────────────────────────────────────────
 const ANVIL_W_RATIO   = 0.22;
@@ -458,6 +459,22 @@ export function drawForgeResult(ctx, campState, x, y, width) {
     currentY += lineH;
   }
 
+  // Afficher les dégâts uniquement pour les armes (pas bouclier ni armure)
+  if (result.itemType === "weapon") {
+    const weaponDef = gameData.weapons.find(w => w.code === result.itemCode);
+    if (weaponDef) {
+      const WEAPON = {
+        tier:     result.tier,
+        materiau: (result.material ?? 0) + 1,
+        models:   weaponDef.models,
+        damFirst: weaponDef.damFirst,
+        damLast:  weaponDef.damLast
+      };
+      const dmg = WeaponDamage(WEAPON);
+      drawLine("Dégâts :", `${dmg}`);
+    }
+  }
+
   if (result.itemType === "weapon") {
     currentY += 8;
     ctx.fillStyle = "#888";
@@ -543,13 +560,10 @@ function getItemLabel(item) {
     return `${weaponName} en ${matName}`;
   }
   if (item.itemType === "armor") {
-    const slotArmors = gameData.armors[item.slot];
-    const armorDef   = slotArmors?.find(a => a.tier === (item.tier ?? 1));
-    return armorDef?.name ?? `Armure T${item.tier}`;
+    return getArmorName(item.slot, item.tier) ?? `Armure T${item.tier}`;
   }
   if (item.itemType === "shield") {
-    const shieldDef = gameData.shields?.find(s => s.tier === (item.tier ?? 1));
-    return shieldDef?.name ?? `Bouclier T${item.tier}`;
+    return getShieldName(item.itemCode, item.tier) ?? `Bouclier T${item.tier}`;
   }
   return item.itemCode ?? "?";
 }

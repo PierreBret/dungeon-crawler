@@ -9,7 +9,7 @@ import { handleEquipKeys }       from "../ui/components/equipPanel.js";
 import { handleArmorEquipKeys }  from "../ui/components/equiparmorpanel.js";
 import { handleForgeKeys }       from "../ui/components/forgepanel.js";
 import { TRAINABLE_STATS }       from "../ui/training.js";
-import { gameData }              from "./gameData.js";
+import { gameData, getArmorName }              from "./gameData.js";
 
 export function setupInput(state) {
   window.addEventListener("keydown", (e) => {
@@ -206,9 +206,13 @@ function launchCombat(state) {
     if (!response.ok) { console.error("Erreur combat:resolve :", response.error); return; }
 
     if (response.drop) {
-      const def = gameData.weapons.find(w => w.code === response.drop.itemCode);
-      response.drop.weaponDef = def;
-      response.drop.matName   = MATERIALS[response.drop.material]?.name ?? "?";
+      if (response.drop.itemType === "armor") {
+        response.drop.armorName = getArmorName(response.drop.slot, response.drop.tier) ?? `Armure T${response.drop.tier}`;
+      } else {
+        const def = gameData.weapons.find(w => w.code === response.drop.itemCode);
+        response.drop.weaponDef = def;
+        response.drop.matName   = MATERIALS[response.drop.material]?.name ?? "?";
+      }
     }
 
     const playerHpStart   = response.playerHpStart ?? response.playerHpMax ?? (state.player.stats.constitution * 2 + state.player.stats.taille);
@@ -345,9 +349,13 @@ function launchTreasure(state) {
     if (!response.ok) { console.error("Erreur treasure:loot :", response.error); return; }
 
     if (response.drop) {
-      const def = gameData.weapons.find(w => w.code === response.drop.itemCode);
-      response.drop.weaponDef = def;
-      response.drop.matName   = MATERIALS[response.drop.material]?.name ?? "?";
+      if (response.drop.itemType === "armor") {
+        response.drop.armorName = getArmorName(response.drop.slot, response.drop.tier) ?? `Armure T${response.drop.tier}`;
+      } else {
+        const def = gameData.weapons.find(w => w.code === response.drop.itemCode);
+        response.drop.weaponDef = def;
+        response.drop.matName   = MATERIALS[response.drop.material]?.name ?? "?";
+      }
     }
 
     // Marquer le trésor comme récupéré côté client

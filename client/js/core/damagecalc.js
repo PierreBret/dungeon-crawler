@@ -25,7 +25,7 @@ export function WeaponDamage(WEAPON) {
   if (NBRTIERS < 2) throw new Error(`WeaponDamage: l'arme doit avoir au moins 2 modèles (reçu: ${NBRTIERS})`);
   const MODMATERIEL = 1 + (WEAPON.materiau - 1) * 0.150;
   const DAMAGE = (WEAPON.damFirst + (WEAPON.tier - 1) * (WEAPON.damLast - WEAPON.damFirst) / (NBRTIERS - 1)) * MODMATERIEL;
-  return Math.round(DAMAGE * 100) / 100;
+  return Math.floor(DAMAGE);
 }
 
 /**

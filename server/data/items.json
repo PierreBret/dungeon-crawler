@@ -205,19 +205,17 @@
     "damageType": "Blunt",
     "models": ["Bocle", "Rondache", "Targe", "Broquel", "Parma", "Rondelle"],
     "hd": 1, "fo": 5, "ta": 3, "in": 3, "ad": 7,
-    "weightFO": 0.0, "weightTA": 0.0, "weightIN": 0.0, "weightVI": 0.0, "weightAD": 0.0,
-    "weight": 2, "speed": 0, "dist": 0, "damFirst": 0, "damLast": 0
+    "weight": 2
   },
   {
     "code": "ME",
     "image": "spiked-chakram.png",
-    "weaponType": "Medium shield",
+    "weaponType": "Medium Shield",
     "typeArme": "Écu",
     "damageType": "Blunt",
     "models": ["Écu", "Écu normand", "Écu long", "Écu de guerre", "Écu chevalier", "Écu héraldique"],
     "hd": 1, "fo": 9, "ta": 3, "in": 3, "ad": 7,
-    "weightFO": 0.0, "weightTA": 0.0, "weightIN": 0.0, "weightVI": 0.0, "weightAD": 0.0,
-    "weight": 4, "speed": 0, "dist": 0, "damFirst": 0, "damLast": 0
+    "weight": 4
   },
   {
     "code": "LG",
@@ -227,7 +225,30 @@
     "damageType": "Blunt",
     "models": ["Pavois", "Scutum lourd", "Aspis de guerre", "Tour shield", "Mantlet", "Rempart"],
     "hd": 1, "fo": 13, "ta": 3, "in": 3, "ad": 7,
-    "weightFO": 0.0, "weightTA": 0.0, "weightIN": 0.0, "weightVI": 0.0, "weightAD": 0.0,
-    "weight": 6, "speed": 0, "dist": 0, "damFirst": 0, "damLast": 0
+    "weight": 6
+  },
+  {
+    "code": "BO",
+    "weaponType": "Body Armor",
+    "typeArme": "Armure corps",
+    "models": ["Jerkin", "Leather", "Padded Leather", "Cuirass", "Banded Mail", "Ring Mail", "Chain Mail", "Breastplate", "Segmentata", "Scale Armor", "Brigandine", "Plate Mail", "Fluted Armor", "Hoplite Armor", "Jazeraint Armor", "Dread Armor"]
+  },
+  {
+    "code": "HE",
+    "weaponType": "Head Armor",
+    "typeArme": "Armure tête",
+    "models": ["Bandana", "Leather Cap", "Steel Cap", "Bone Helm", "Chain Coif", "Spangenhelm", "Cabasset", "Sallet", "Barbut", "Basinet", "Armet", "Close Helm", "Burgonet", "Hoplite Helm", "Jazeraint Helm", "Dread Helm"]
+  },
+  {
+    "code": "AR",
+    "weaponType": "Arms Armor",
+    "typeArme": "Armure bras",
+    "models": ["Bandage", "Leather Glove", "Reinforced Glove", "Knuckles", "Ring Sleeve", "Chain Sleeve", "Gauntlet", "Vambrace", "Plate Glove", "Rondanche", "Tilt Glove", "Freiturner", "Fluted Glove", "Hoplite Glove", "Jazeraint Glove", "Dread Glove"]
+  },
+  {
+    "code": "LE",
+    "weaponType": "Legs Armor",
+    "typeArme": "Armure jambes",
+    "models": ["Sandals", "Boots", "Long Boots", "Cuisse", "Light Greave", "Ring Legging", "Chain Leggings", "Fuzzkampf", "Poleyn", "Jambeau", "Missaglia", "Plate Leggings", "Fluted Leggings", "Hoplite Leggings", "Jazeraint Leggings", "Dread Leggings"]
   }
 ]

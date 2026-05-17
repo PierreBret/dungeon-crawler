@@ -14,9 +14,17 @@ function loadJSON(filename) {
   return JSON.parse(readFileSync(join(__dirname, "..", "data", filename), "utf8"));
 }
 
-const weapons  = loadJSON("weapons.json");
-const armors   = loadJSON("armors.json");
-const shields  = loadJSON("shields.json");
+const items = loadJSON("items.json");
+
+// Mapping slot → code d'item dans items.json
+const slotToCode = { corps: "BO", tete: "HE", bras: "AR", jambes: "LE" };
+
+/**
+ * Retourne la définition d'un item par son code.
+ */
+function getItemDef(code) {
+  return items.find(i => i.code === code) ?? null;
+}
 
 // ─── Vérification de compatibilité ───────────────────────────────────────────
 
@@ -52,22 +60,21 @@ function computeWeaponTier(tierA, tierB, maxTier) {
 
 // ─── Calcul du tier résultant — Armures et Boucliers ──────────────────────────
 
-function computeArmorTier(tierA, tierB) {
-  const maxTier = 16;
-  // Recettes valides : T(n) + T(n+1) = T(n+2) jusqu'à T13
-  if (tierA + 1 === tierB && tierA + 2 <= 14) {
+function computeArmorTier(tierA, tierB, maxTier) {
+  // Recettes valides : T(n) + T(n+1) = T(n+2) jusqu'à T(maxTier-3)
+  if (tierA + 1 === tierB && tierA + 2 <= maxTier - 2) {
     return Math.min(tierA + 2, maxTier);
   }
-  if (tierB + 1 === tierA && tierB + 2 <= 14) {
+  if (tierB + 1 === tierA && tierB + 2 <= maxTier - 2) {
     return Math.min(tierB + 2, maxTier);
   }
-  // T14 + T14 = T15
-  if (tierA === 14 && tierB === 14) {
-    return 15;
+  // T(maxTier-2) + T(maxTier-2) = T(maxTier-1)
+  if (tierA === maxTier - 2 && tierB === maxTier - 2) {
+    return maxTier - 1;
   }
-  // T15 + T15 = T16
-  if (tierA === 15 && tierB === 15) {
-    return 16;
+  // T(maxTier-1) + T(maxTier-1) = T(maxTier)
+  if (tierA === maxTier - 1 && tierB === maxTier - 1) {
+    return maxTier;
   }
   // Recette non définie
   return Math.min(Math.floor((tierA + tierB) / 2), maxTier);
@@ -135,7 +142,7 @@ export function computeFusionPreview(itemA, itemB) {
 
 function computeWeaponFusion(itemA, itemB) {
   // Le résultat prend le type d'arme de l'objet A (premier sélectionné)
-  const weaponDef = weapons.find(w => w.code === itemA.itemCode);
+  const weaponDef = getItemDef(itemA.itemCode);
   if (!weaponDef) return { ok: false, error: `Arme inconnue: ${itemA.itemCode}` };
 
   const maxTier = weaponDef.models.length;
@@ -188,13 +195,14 @@ function computeArmorFusion(itemA, itemB) {
   const tierB = itemB.tier ?? 1;
   const slot  = itemA.slot;
 
-  const tierResult = computeArmorTier(tierA, tierB);
+  const code = slotToCode[slot];
+  if (!code) return { ok: false, error: `Slot d'armure inconnu: ${slot}` };
 
-  const slotArmors = armors[slot];
-  if (!slotArmors) return { ok: false, error: `Slot d'armure inconnu: ${slot}` };
+  const def = getItemDef(code);
+  const maxTier = def?.models.length ?? 16;
+  const tierResult = computeArmorTier(tierA, tierB, maxTier);
 
-  const armorDef = slotArmors.find(a => a.tier === tierResult);
-  const name     = armorDef?.name ?? `Armure T${tierResult}`;
+  const name = def?.models[tierResult - 1] ?? `Armure T${tierResult}`;
 
   return {
     ok: true,
@@ -213,16 +221,18 @@ function computeShieldFusion(itemA, itemB) {
   const tierA = itemA.tier ?? 1;
   const tierB = itemB.tier ?? 1;
 
-  const tierResult = computeArmorTier(tierA, tierB);
+  const def  = getItemDef(itemA.itemCode);
+  const maxTier = def?.models.length ?? 6;
+  const tierResult = computeArmorTier(tierA, tierB, maxTier);
 
-  const shieldDef = shields.find(s => s.tier === tierResult);
-  const name      = shieldDef?.name ?? `Bouclier T${tierResult}`;
+  const name = def?.models[tierResult - 1] ?? `Bouclier T${tierResult}`;
 
   return {
     ok: true,
     result: {
-      itemType: "shield",
-      tier:     tierResult,
+      itemType:  "shield",
+      itemCode:  itemA.itemCode,
+      tier:      tierResult,
       name
     }
   };

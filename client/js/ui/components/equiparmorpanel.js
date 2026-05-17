@@ -20,7 +20,7 @@
 */
 
 import { MATERIALS }  from "../../core/constants.js";
-import { gameData }   from "../../core/gameData.js";
+import { getArmorName }   from "../../core/gameData.js";
 
 // ─── Constantes des slots ─────────────────────────────────────────────────────
 
@@ -456,13 +456,12 @@ export function getArmorItemsForSlot(inventory, slot) {
 
 function getArmorDef(item) {
   if (!item?.slot) return null;
-  const slotArmors = gameData.armors[item.slot];
-  if (!slotArmors) return null;
-  return slotArmors.find(a => a.tier === (item.tier ?? 1)) ?? null;
+  const name = getArmorName(item.slot, item.tier);
+  if (!name) return null;
+  const tier = item.tier ?? 1;
+  return { tier, name, weight: tier, reduction: tier };
 }
 
 function getArmorLabel(item) {
-  const armorDef = getArmorDef(item);
-  const name     = armorDef?.name ?? item.slot ?? "?";
-  return name;
+  return getArmorName(item.slot, item.tier) ?? item.slot ?? "?";
 }

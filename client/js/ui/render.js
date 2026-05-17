@@ -254,12 +254,18 @@ function drawTreasureDropDialog(ctx, drop) {
   ctx.textBaseline = "top";
   ctx.fillText("💎 Trésor trouvé !", x + w / 2, y + padding);
 
-  const weaponName = drop.weaponDef?.models?.[drop.tier - 1] ?? drop.weaponDef?.typeArme ?? drop.itemCode ?? "?";
-  const matName    = drop.matName ?? "?";
+  let displayName;
+  if (drop.itemType === "armor") {
+    displayName = drop.armorName ?? "?";
+  } else {
+    const weaponName = drop.weaponDef?.models?.[drop.tier - 1] ?? drop.weaponDef?.typeArme ?? drop.itemCode ?? "?";
+    const matName    = drop.matName ?? "?";
+    displayName = `${weaponName} en ${matName}`;
+  }
 
   ctx.fillStyle = "white";
   ctx.font      = "13px monospace";
-  ctx.fillText(`${weaponName} ${matName}`, x + w / 2, y + padding + 28);
+  ctx.fillText(displayName, x + w / 2, y + padding + 28);
 
   ctx.fillStyle = "#888";
   ctx.font      = "12px monospace";

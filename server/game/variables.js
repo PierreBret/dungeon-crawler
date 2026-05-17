@@ -4,7 +4,7 @@
 */
 
 // ─── Mode développement ───────────────────────────────────────────────────────
-export const DEV_MODE = false;
+export const DEV_MODE = true;
 
 // ─── Configuration du combat ──────────────────────────────────────────────────
 export const COMBAT = {

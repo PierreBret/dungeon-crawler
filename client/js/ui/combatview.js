@@ -98,11 +98,17 @@ function drawCombatLog(ctx, combatState, player, W, H) {
   if (atEnd && combatState.winner === "player" && combatState.drop) {
     const dropY = logY + Math.min(visible.length, maxLines) * lineH + 10;
     const drop  = combatState.drop;
-    const def   = drop.weaponDef;
-    const model = def?.models?.[(drop.tier ?? 1) - 1] ?? drop.itemCode;
+    let lootText;
+    if (drop.itemType === "armor") {
+      lootText = `Butin : ${drop.armorName ?? "?"}`;
+    } else {
+      const def   = drop.weaponDef;
+      const model = def?.models?.[(drop.tier ?? 1) - 1] ?? drop.itemCode;
+      lootText = `Butin : ${model} en ${drop.matName ?? "?"}`;
+    }
     ctx.fillStyle = THEME.text.accent;
     ctx.font      = THEME.font.mono;
-    ctx.fillText(`Butin : ${model} en ${drop.matName ?? "?"}`, logX, dropY);
+    ctx.fillText(lootText, logX, dropY);
   }
 
   // Légende / dialog

@@ -7,7 +7,7 @@ import { CAMP_OPTIONS }        from "../core/constants.js";
 import { getLayout }           from "../core/constants.js";
 import { MATERIALS }           from "../core/constants.js";
 import { drawPlayerCard }      from "./components/characterCard.js";
-import { gameData }            from "../core/gameData.js";
+import { gameData, getArmorName }            from "../core/gameData.js";
 import { drawEquipPanel, getCompatibleItems } from "./components/equippanel.js";
 import { drawArmorEquipPanel, getArmorItemsForSlot } from "./components/equiparmorpanel.js";
 import { drawForgePanel, drawForgeResult } from "./components/forgepanel.js";
@@ -343,11 +343,9 @@ function getOrLoadImage(path) {
 function drawArmorDetail(ctx, item, x, y, width) {
   if (item.itemType !== "armor") return;
 
-  const slotArmors = gameData.armors[item.slot];
-  if (!slotArmors) return;
-
-  const armorDef = slotArmors.find(a => a.tier === (item.tier ?? 1));
-  if (!armorDef) return;
+  const tier = item.tier ?? 1;
+  const name = getArmorName(item.slot, tier);
+  if (!name) return;
 
   let currentY = y;
   const lineH  = 24;
@@ -356,7 +354,7 @@ function drawArmorDetail(ctx, item, x, y, width) {
 
   ctx.fillStyle = "#d4a017";
   ctx.font      = "bold 15px monospace";
-  ctx.fillText(armorDef.name, x, currentY);
+  ctx.fillText(name, x, currentY);
   currentY += lineH + 4;
 
   // ─── Infos ────────────────────────────────────────────────────────────────
@@ -373,6 +371,6 @@ function drawArmorDetail(ctx, item, x, y, width) {
   const SLOT_LABELS = { tete: "Tête", corps: "Corps", bras: "Bras", jambes: "Jambes" };
 
   drawLine("Emplacement :", SLOT_LABELS[item.slot] ?? item.slot);
-  drawLine("Armure :",      `${armorDef.reduction}`);
-  drawLine("Poids :",       `${armorDef.weight}`);
+  drawLine("Armure :",      `${tier}`);
+  drawLine("Poids :",       `${tier}`);
 }

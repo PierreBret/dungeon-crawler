@@ -21,10 +21,23 @@ const presentation = JSON.parse(
   readFileSync(join(__dirname, "../data/presentation.json"), "utf8")
 );
 
-// armors.json — référentiel des pièces d'armure par slot et tier
-const armors = JSON.parse(
-  readFileSync(join(__dirname, "../data/armors.json"), "utf8")
+// items.json — référentiel unifié des items (armes, boucliers, armures)
+const items = JSON.parse(
+  readFileSync(join(__dirname, "../data/items.json"), "utf8")
 );
+
+// Mapping slot → code d'item dans items.json
+const slotToCode = { corps: "BO", tete: "HE", bras: "AR", jambes: "LE" };
+
+/**
+ * Retourne le nom d'une armure à partir de son slot et tier.
+ */
+function getArmorName(slot, tier) {
+  const code = slotToCode[slot];
+  if (!code) return null;
+  const def = items.find(i => i.code === code);
+  return def?.models[(tier ?? 1) - 1] ?? null;
+}
 
 // ─── Normalisation en pourcentage ──────────────────────────────────────────────
 
@@ -1333,9 +1346,8 @@ function normalizeEquipment(equipment) {
       const tier = piece.tier ?? 1;
       reduction += tier;
       poids += tier * 2;
-      const armorSlot = armors[slot];
-      const armorDef = armorSlot?.find(a => a.tier === tier);
-      pieces[slot] = armorDef?.name ?? null;
+      const armorName = getArmorName(slot, tier);
+      pieces[slot] = armorName;
     } else {
       pieces[slot] = null;
     }

@@ -58,12 +58,14 @@ function loadJSON(filename) {
   return JSON.parse(readFileSync(join(__dirname, "data", filename), "utf8"));
 }
 
-const weapons  = loadJSON("weapons.json");
+const items    = loadJSON("items.json");
 const bestiary = loadJSON("bestiary.json");
 
-app.get("/api/data/weapons",  (req, res) => res.json(weapons));
-app.get("/api/data/armors",   (req, res) => res.json(loadJSON("armors.json")));
-app.get("/api/data/shields",  (req, res) => res.json(loadJSON("shields.json")));
+// Dérivation : armes + boucliers (tout sauf les armures BO/HE/AR/LE)
+const armorCodes = ["BO", "HE", "AR", "LE"];
+const weapons = items.filter(i => !armorCodes.includes(i.code));
+
+app.get("/api/data/items",    (req, res) => res.json(items));
 app.get("/api/data/bestiary", (req, res) => res.json(bestiary));
 
 // ─── Socket.io ────────────────────────────────────────────────────────────────
@@ -299,17 +301,34 @@ io.on("connection", (socket) => {
     treasure.looted = true;
 
     const etage = session.etage ?? 1;
-    const randomWeapon = weapons[rollDie(0, weapons.length - 1)];
-    const dropTier = rollDie(1, etage + 1);
-    const dropMat  = rollDie(1, etage + 1) - 1;
+    // 21 weaponTypes (armes + boucliers) + 4 armorSlots = 25 chances
+    const armorSlots = ["tete", "corps", "bras", "jambes"];
+    const dropRoll = rollDie(0, weapons.length + armorSlots.length - 1);
+    const dropTier = rollDie(1, 2);
 
-    const drop = {
-      itemType:   "weapon",
-      itemCode:   randomWeapon.code,
-      tier:       dropTier,
-      material:   dropMat,
-      affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
-    };
+    let drop;
+    if (dropRoll < weapons.length) {
+      // Arme ou bouclier
+      const randomWeapon = weapons[dropRoll];
+      const dropMat = rollDie(0, 1);
+      drop = {
+        itemType:   "weapon",
+        itemCode:   randomWeapon.code,
+        tier:       dropTier,
+        material:   dropMat,
+        affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
+      };
+    } else {
+      // Armure (pas de tirage de matériau)
+      const slot = armorSlots[dropRoll - weapons.length];
+      drop = {
+        itemType:   "armor",
+        slot,
+        tier:       dropTier,
+        material:   0,
+        affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
+      };
+    }
     dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
 
     try {
@@ -358,7 +377,8 @@ io.on("connection", (socket) => {
       const character     = dbGetCharacter(session.runId);
       const augmentations = JSON.parse(character.augmentations ?? "{}");
       const nbAug         = augmentations[data.stat] ?? 0;
-      const chance        = Math.floor(Math.min((character.volonte * 5) / (1 + nbAug), 95));
+      const chanceBase    = ((character.volonte - 3) / 18) * 50 + 50;
+      const chance        = Math.floor(chanceBase / Math.pow(2, nbAug));
       const roll          = rollDie(1, 100);
       const success       = roll <= chance;
 
@@ -493,19 +513,34 @@ io.on("connection", (socket) => {
           }
         }
 
-        // ─── Butin : arme aléatoire après chaque victoire ─────────────────────
-        const creatureTier = creatureDef.tier ?? 1;
-        const randomWeapon = weapons[rollDie(0, weapons.length - 1)];
-        const dropTier = rollDie(1, creatureTier);
-        const dropMat  = rollDie(0, creatureTier - 1);
+        // ─── Butin : item aléatoire après chaque victoire ──────────────────────
+        // 21 weaponTypes (armes + boucliers) + 4 armorSlots = 25 chances
+        const armorSlots = ["tete", "corps", "bras", "jambes"];
+        const dropRoll = rollDie(0, weapons.length + armorSlots.length - 1);
+        const dropTier = rollDie(1, 2);
 
-        drop = {
-          itemType:   "weapon",
-          itemCode:   randomWeapon.code,
-          tier:       dropTier,
-          material:   dropMat,
-          affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
-        };
+        if (dropRoll < weapons.length) {
+          // Arme ou bouclier
+          const randomWeapon = weapons[dropRoll];
+          const dropMat = rollDie(0, 1);
+          drop = {
+            itemType:   "weapon",
+            itemCode:   randomWeapon.code,
+            tier:       dropTier,
+            material:   dropMat,
+            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
+          };
+        } else {
+          // Armure (pas de tirage de matériau)
+          const slot = armorSlots[dropRoll - weapons.length];
+          drop = {
+            itemType:   "armor",
+            slot,
+            tier:       dropTier,
+            material:   0,
+            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
+          };
+        }
         dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
       }
 
