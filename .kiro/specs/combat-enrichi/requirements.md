@@ -263,7 +263,7 @@ l'équipement ait un impact mesurable sur l'issue du combat.
 5. WHEN une attaque touche, THE Combat_Resolver SHALL calculer `modTypeDégâts` selon le type de dégâts de l'arme vs le type d'armure/défense de la cible (plage : 0.8 à 1.2) ; WHERE les armures ne sont pas implémentées, `modTypeDégâts = 1.0`.
 6. WHEN une attaque touche, THE Combat_Resolver SHALL calculer `TotalDamage = Math.floor(baseArme × modMatériau × coefStats × modAffinité × modTypeDégâts)`.
 7. WHEN une attaque touche, THE Combat_Resolver SHALL calculer `dégâtsFinaux = Math.max(0, TotalDamage - réductionArmure)`.
-8. WHERE les armures ne sont pas implémentées, THE Combat_Resolver SHALL utiliser `réductionArmure = 0`.
+8. THE Combat_Resolver SHALL calculer `réductionArmure = tier de l'armure corps (slot "corps")` du défenseur. Les dégâts ne sont pas localisés : tous les coups touchent le corps. Les autres pièces d'armure (tête, bras, jambes) contribuent au poids total (Charge) mais pas à la réduction de dégâts.
 9. WHEN une attaque touche, THE Combat_Resolver SHALL déduire `dégâtsFinaux` des PV du Combattant touché via `PV -= dégâtsFinaux`.
 10. WHEN les PV d'un Combattant sont modifiés, THE Combat_Resolver SHALL les contraindre dans `[0, hpMax]` via `hp = Math.max(0, Math.min(hpMax, hp))`.
 

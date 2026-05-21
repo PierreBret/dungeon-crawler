@@ -56,5 +56,5 @@ export const COMBAT = {
   surcoutMultiplier: 10,
 
   // ─── Matériaux — noms par index (materiau 1-8 → index 0-7) ─────────────────
-  materials: ["Bois", "Cuivre", "Étain", "Bronze", "Fer", "Fonte", "Acier", "Acier damascène"]
+  materials: ["Bois", "Cuivre", "Étain", "Bronze", "Fer", "Fonte", "Acier", "Adamante"]
 };

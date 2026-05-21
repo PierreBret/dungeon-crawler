@@ -1211,8 +1211,12 @@ function normalizeStats(stats) {
 function normalizeTactics(tactic) {
   if (!tactic) return [{ EO: 5, NA: 5, EN: 5 }];
   if (Array.isArray(tactic)) return tactic;
-  // Format objet {min1: {...}, min2: {...}, ...}
   if (typeof tactic === 'object') {
+    // Format objet direct {EO, NA, EN} — tactique unique
+    if ('EO' in tactic || 'NA' in tactic || 'EN' in tactic) {
+      return [{ EO: tactic.EO ?? 5, NA: tactic.NA ?? 5, EN: tactic.EN ?? 5 }];
+    }
+    // Format bestiary {min1: {EO, NA, EN}, min2: {...}, ...}
     const entries = Object.keys(tactic)
       .sort()
       .map(key => tactic[key]);
@@ -1278,7 +1282,8 @@ function normalizeEquipment(equipment) {
     return equipment;
   }
   // Format serveur : slots d'armure (corps, tete, bras, jambes)
-  // Calculer une réduction basée sur le nombre de pièces et leur tier
+  // Réduction = tier de l'armure corps uniquement (dégâts non localisés → tout touche le corps)
+  // Poids = somme de toutes les pièces (toutes pèsent sur la charge)
   let reduction = 0;
   let poids = 0;
   let hasArmor = false;
@@ -1289,8 +1294,11 @@ function normalizeEquipment(equipment) {
     if (piece) {
       hasArmor = true;
       const tier = piece.tier ?? 1;
-      reduction += tier;
       poids += tier * 2;
+      // Seule l'armure corps réduit les dégâts (pas de localisation)
+      if (slot === 'corps') {
+        reduction = tier;
+      }
       const armorName = getArmorName(slot, tier);
       pieces[slot] = armorName;
     } else {

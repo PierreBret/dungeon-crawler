@@ -89,8 +89,9 @@ export function generateDrop(dropTable) {
     selected = dropTable.entries[dropTable.entries.length - 1];
   }
 
-  // 2) Tirage du tier (uniforme entre 1 et tierCount)
-  const tier = rollDie(1, selected.tierCount);
+  // 2) Tirage du tier (uniforme entre 1 et maxTier, plafonné par tierCount)
+  const maxTier = 2;
+  const tier = rollDie(1, Math.min(selected.tierCount, maxTier));
 
   // 3) Tirage du matériau (indépendant du tier)
   //    Pour les armures : matériau = 0 (pas de matériau)

@@ -60,6 +60,7 @@ function loadJSON(filename) {
 }
 
 const items    = loadJSON("items.json");
+const armors   = loadJSON("armors.json");
 const bestiary = loadJSON("bestiary.json");
 
 // Dérivation : armes + boucliers (tout sauf les armures BO/HE/AR/LE)
@@ -70,6 +71,7 @@ const weapons = items.filter(i => !armorCodes.includes(i.code));
 const dropTable = buildDropTable(items);
 
 app.get("/api/data/items",    (req, res) => res.json(items));
+app.get("/api/data/armors",   (req, res) => res.json(armors));
 app.get("/api/data/bestiary", (req, res) => res.json(bestiary));
 
 // ─── Socket.io ────────────────────────────────────────────────────────────────
@@ -455,13 +457,13 @@ io.on("connection", (socket) => {
       // Arme par défaut (mains nues) si aucune arme équipée
       const defaultWeaponDef = { code: "FIST", typeArme: "Mains nues", dist: 1, weight: 0, damFirst: 3, damLast: 8, models: ["Mains nues"], weightFO: 1, weightTA: 0.5, weightIN: 0, weightVI: 0.5, weightAD: 1 };
 
-      // Normaliser la tactique joueur (objet unique {EO, NA, EN})
+      // Normaliser la tactique joueur (tableau [{EO, NA, EN}])
       const rawTactic = data.tactic ?? data.strategy;
-      const normalizedTactic = {
+      const normalizedTactic = [{
         EO: rawTactic?.EO ?? rawTactic?.eo ?? 5,
         NA: rawTactic?.NA ?? rawTactic?.na ?? 5,
         EN: rawTactic?.EN ?? rawTactic?.en ?? 5
-      };
+      }];
 
       const playerData = {
         name:       session.player.name,

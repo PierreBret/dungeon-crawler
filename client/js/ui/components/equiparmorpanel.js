@@ -20,7 +20,7 @@
 */
 
 import { MATERIALS }  from "../../core/constants.js";
-import { getArmorName }   from "../../core/gameData.js";
+import { getArmorName, getArmorImagePath } from "../../core/gameData.js";
 
 // ─── Constantes des slots ─────────────────────────────────────────────────────
 
@@ -42,6 +42,20 @@ const FRAME_GAP_RATIO    = 0.03;
 
 const LIST_H_RATIO       = 0.25;
 const LIST_LINE_H        = 28;
+
+// ─── Cache d'images armures ───────────────────────────────────────────────────
+const armorImageCache = {};
+
+function getOrLoadArmorImage(slot, tier) {
+  const path = getArmorImagePath(slot, tier);
+  if (!path) return null;
+  if (!armorImageCache[path]) {
+    const img = new Image();
+    img.src = `/assets/${path}`;
+    armorImageCache[path] = img;
+  }
+  return armorImageCache[path];
+}
 
 // ─── Calcul des dimensions depuis la largeur disponible ───────────────────────
 function computeLayout(width, canvasHeight) {
@@ -201,32 +215,49 @@ function drawArmorFrame(ctx, x, y, w, h, item, label, isActive) {
 }
 
 function drawArmorItemInFrame(ctx, x, y, w, h, item) {
-  const armorDef = getArmorDef(item);
-  const name     = armorDef?.name ?? item.slot ?? "?";
+  const img = getOrLoadArmorImage(item.slot, item.tier);
 
-  ctx.fillStyle = "#aaa";
-  ctx.font      = "11px monospace";
-  ctx.textAlign = "center";
+  if (img?.complete && img.naturalWidth > 0) {
+    const padding = 6;
+    const innerW  = w - padding * 2;
+    const innerH  = h - padding * 2;
+    const ratio   = img.naturalWidth / img.naturalHeight;
 
-  const words = name.split(" ");
-  const lines = [];
-  let line    = "";
+    let drawW = innerW;
+    let drawH = innerW / ratio;
+    if (drawH > innerH) { drawH = innerH; drawW = innerH * ratio; }
 
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > w - 10 && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = test;
+    const drawX = x + padding + (innerW - drawW) / 2;
+    const drawY = y + padding + (innerH - drawH) / 2;
+    ctx.drawImage(img, drawX, drawY, drawW, drawH);
+  } else {
+    const armorDef = getArmorDefLocal(item);
+    const name     = armorDef?.name ?? item.slot ?? "?";
+
+    ctx.fillStyle = "#aaa";
+    ctx.font      = "11px monospace";
+    ctx.textAlign = "center";
+
+    const words = name.split(" ");
+    const lines = [];
+    let line    = "";
+
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > w - 10 && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = test;
+      }
     }
-  }
-  if (line) lines.push(line);
+    if (line) lines.push(line);
 
-  let lineY = y + h / 2 - ((lines.length - 1) * 14) / 2;
-  for (const l of lines) {
-    ctx.fillText(l, x + w / 2, lineY);
-    lineY += 14;
+    let lineY = y + h / 2 - ((lines.length - 1) * 14) / 2;
+    for (const l of lines) {
+      ctx.fillText(l, x + w / 2, lineY);
+      lineY += 14;
+    }
   }
 }
 
@@ -454,7 +485,7 @@ export function getArmorItemsForSlot(inventory, slot) {
   return inventory.filter(i => i.itemType === "armor" && i.slot === slot);
 }
 
-function getArmorDef(item) {
+function getArmorDefLocal(item) {
   if (!item?.slot) return null;
   const name = getArmorName(item.slot, item.tier);
   if (!name) return null;

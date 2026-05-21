@@ -4,6 +4,7 @@
     "slot": "corps",
     "nameFr": "Armure corps",
     "nameEn": "Body Armor",
+    "imageDir": "Armors/Armor",
     "models": [
       "Jerkin",
       "Leather",
@@ -23,22 +24,22 @@
       "Dread Armor"
     ],
     "images": [
-      "simple-leather-vest",
-      "leather-tunic",
-      "reinforced-leather-vest",
-      "rogue-leather-armor",
-      "leather-hunter-armor",
-      "leather-battle-armor",
-      "chainmail-tunic",
-      "scale-mail-shirt",
-      "full-plate-armor",
-      "iron-breastplate",
-      "black-knight-armor",
-      "golden-champion-armor",
-      null,
-      null,
-      null,
-      null
+      "simple-leather-vest.png",
+      "leather-tunic.png",
+      "reinforced-leather-vest.png",
+      "rogue-leather-armor.png",
+      "leather-hunter-armor.png",
+      "leather-battle-armor.png",
+      "chainmail-tunic.png",
+      "scale-mail-shirt.png",
+      "full-plate-armor.png",
+      "iron-breastplate.png",
+      "black-knight-armor.png",
+      "golden-champion-armor.png",
+      "golden-paladin-armor.png",
+      "holy-knight-armor.png",
+      "dragon-emperor-armor.png",
+      "infernal-warrior-armor.png"
     ]
   },
   {
@@ -46,6 +47,7 @@
     "slot": "tete",
     "nameFr": "Armure tête",
     "nameEn": "Head Armor",
+    "imageDir": "Armors/Helmets",
     "models": [
       "Bandana",
       "Leather Cap",
@@ -65,22 +67,22 @@
       "Dread Helm"
     ],
     "images": [
-      "wooden-helm",
-      "bronze-knight-helm",
-      "bronze-corinthian-helm",
-      "chainmail-hood",
-      "classic-barbute",
-      "roman-galea",
-      "iron-greathelm",
-      "classic-knight-helm",
-      "armored-bascinet",
-      "riveted-bronze-helm",
-      "goldline-helm",
-      "ornate-crown-helm",
-      null,
-      null,
-      null,
-      null
+      "wooden-helm.png",
+      "bronze-knight-helm.png",
+      "bronze-corinthian-helm.png",
+      "chainmail-hood.png",
+      "classic-barbute.png",
+      "roman-galea.png",
+      "iron-greathelm.png",
+      "classic-knight-helm.png",
+      "armored-bascinet.png",
+      "riveted-bronze-helm.png",
+      "goldline-helm.png",
+      "ornate-crown-helm.png",
+      "golden-winged-helm.png",
+      "spartan-plumed-helm-gold.png",
+      "royal-crown-helm.png",
+      "hellfire-demon.png"
     ]
   },
   {
@@ -88,6 +90,7 @@
     "slot": "bras",
     "nameFr": "Armure bras",
     "nameEn": "Arms Armor",
+    "imageDir": "Armors/Gloves",
     "models": [
       "Bandage",
       "Leather Glove",
@@ -107,22 +110,22 @@
       "Dread Glove"
     ],
     "images": [
-      "fingerless-leather-gloves",
-      "leather-gloves-simple",
-      "leather-gloves-hunter",
-      "classic-leather-gloves",
-      "leather-gloves-brown",
-      "royal-golden-gloves",
-      "classic-steel-gauntlets",
-      "steel-gauntlets-01",
-      "steel-gauntlets-02",
-      "silver-gauntlets",
-      "black-gold-gauntlets",
-      "heavy-steel-gauntlets",
-      null,
-      null,
-      null,
-      null
+      "fingerless-leather-gloves.png",
+      "leather-gloves-simple.png",
+      "leather-gloves-hunter.png",
+      "classic-leather-gloves.png",
+      "leather-gloves-brown.png",
+      "royal-golden-gloves.png",
+      "classic-steel-gauntlets.png",
+      "steel-gauntlets-01.png",
+      "steel-gauntlets-02.png",
+      "silver-gauntlets.png",
+      "black-gold-gauntlets.png",
+      "heavy-steel-gauntlets.png",
+      "gold-jewel-gauntlets.png",
+      "holy-paladin-gauntlets.png",
+      "royal-lion-gauntlets.png",
+      "demon-claw-gauntlets.png"
     ]
   },
   {
@@ -130,6 +133,7 @@
     "slot": "jambes",
     "nameFr": "Armure jambes",
     "nameEn": "Legs Armor",
+    "imageDir": "Armors/Boots",
     "models": [
       "Sandals",
       "Boots",
@@ -149,22 +153,22 @@
       "Dread Leggings"
     ],
     "images": [
-      "worn-brown-boots",
-      "leather-boots-brown",
-      "sturdy-brown-boots",
-      "adventurers-boots",
-      "brown-leather-boots",
-      "ornate-gold-boots",
-      "adventurers-boots-gold",
-      "worn-boots-dark",
-      "plate-boots-grey",
-      "plate-boots-silver",
-      "plate-boots-dark",
-      "plate-boots-blue",
-      null,
-      null,
-      null,
-      null
+      "worn-brown-boots.png",
+      "leather-boots-brown.png",
+      "sturdy-brown-boots.png",
+      "adventurers-boots.png",
+      "brown-leather-boots.png",
+      "ornate-gold-boots.png",
+      "adventurers-boots-gold.png",
+      "worn-boots-dark.png",
+      "plate-boots-grey.png",
+      "plate-boots-silver.png",
+      "plate-boots-dark.png",
+      "plate-boots-blue.png",
+      "sturdy-gold-boots.png",
+      "ornate-gold-boots2.png",
+      "royal-boots-gold-blue.png",
+      "spiked-dark-boots.png"
     ]
   }
 ]
