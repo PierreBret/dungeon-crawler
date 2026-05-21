@@ -12,8 +12,6 @@ describe('phaseDefense', () => {
   // Helper to create a minimal combat state for testing
   function makeState(overrides = {}) {
     return {
-      minute: 1,
-      tempo: 1,
       distance: 5,
       attacker: 'player',
       attackResult: 'hit',

@@ -26,8 +26,6 @@ describe('initCombatState', () => {
     const creature = makePlayerData();
     const state = initCombatState(player, creature, COMBAT);
 
-    expect(state.minute).toBe(1);
-    expect(state.tempo).toBe(1);
     expect(state.distance).toBe(COMBAT.distanceInitiale);
     expect(state.attacker).toBeNull();
     expect(state.log).toEqual([]);

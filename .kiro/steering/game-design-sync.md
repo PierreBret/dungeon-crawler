@@ -1,5 +1,6 @@
 ---
 inclusion: auto
+description: Synchronisation automatique de Game_Design.md avec les specs et décisions de design prises en conversation
 ---
 
 # Règle : Synchronisation de Game_Design.md
@@ -32,6 +33,18 @@ Ces normes s'appliquent à tout code écrit pour ce projet :
 - Conventions de code (arrondi, nommage, validation)
 - Structure du donjon, progression, forge
 - Tout placeholder ou fonctionnalité "version future"
+
+## Principes fondamentaux — Items & Loot
+
+Ces principes sont permanents et ne doivent jamais être redemandés :
+
+- **Tiers = Models** : dans `items.json`, le tableau `models` de chaque item représente ses tiers (tier 1 = premier model, tier N = dernier model). Le nombre de tiers d'un type d'item = `models.length`.
+- **Matériau indépendant** : le matériau (1-8, défini dans `variables.js`) est un axe indépendant du tier. Un item a un tier ET un matériau, déterminés séparément.
+- **Drop pondéré par nombre de tiers** : la probabilité de drop d'un type d'item est proportionnelle à son nombre de tiers (`models.length`). Ex : Head Armor (16 tiers) a 16 chances vs Dagger (7 tiers) a 7 chances dans le pool global.
+- **Armes naturelles exclues** : les items avec `natural: true` (griffes, morsure, corne, etc.) sont des armes de monstres — jamais droppables.
+- **Pool unique** : tous les types d'items droppables (armes, armures, boucliers) sont dans un même pool pondéré — pas de tirage par catégorie d'abord.
+- **Séquence de tirage** : 1) type d'item (pondéré par nb de tiers) → 2) tier → 3) matériau (si applicable).
+- **Même règle combat/trésor** : la table de drop est identique pour les récompenses de combat et les trésors.
 
 ## Source de vérité
 

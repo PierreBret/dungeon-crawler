@@ -13,9 +13,11 @@
   Aucun calcul de gameplay ici (uniquement affichage)
 */
 
+import { THEME } from "../core/theme.js";
+import { gameData } from "../core/gameData.js";
+
 const EMOJI = {
   player:   "🧙",
-  creature: "👺",
   forge:    "⚒️",
   training: "🎯",
   exit:     "🔽",
@@ -86,7 +88,7 @@ function computeVisibility(grid, position, devMode) {
   return visible;
 }
 
-export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode) {
+export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode, scanResult) {
   if (!ctx || !dungeon || !player || !config) return;
 
   const { grid, creatures, forge, training, exit, treasure } = dungeon;
@@ -142,7 +144,9 @@ export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode)
     for (const creature of creatures) {
       if (!visible.has(`${creature.x},${creature.y}`)) continue;
       ctx.globalAlpha = creature.defeated ? 0.2 : 1.0;
-      drawEmoji(EMOJI.creature, creature.x, creature.y);
+      const def = gameData.bestiary.find(function findById(b) { return b.id === creature.id; });
+      const emoji = def?.emoji ?? "👺";
+      drawEmoji(emoji, creature.x, creature.y);
     }
     ctx.globalAlpha = 1.0;
   }
@@ -173,6 +177,11 @@ export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode)
   // Notification de trésor récupéré
   if (treasureDrop) {
     drawTreasureDropDialog(ctx, treasureDrop);
+  }
+
+  // Popup de scan de créature
+  if (scanResult) {
+    drawScanPopup(ctx, scanResult);
   }
 }
 
@@ -270,6 +279,80 @@ function drawTreasureDropDialog(ctx, drop) {
   ctx.fillStyle = "#888";
   ctx.font      = "12px monospace";
   ctx.fillText("[Entrée] pour continuer", x + w / 2, y + h - padding - 14);
+
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "top";
+}
+
+
+// ─── Popup de scan de créature ────────────────────────────────────────────────
+
+function wrapText(ctx, text, maxWidth) {
+  const words = text.split(" ");
+  const lines = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    const testLine = currentLine ? currentLine + " " + word : word;
+    if (ctx.measureText(testLine).width > maxWidth) {
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines;
+}
+
+function drawScanPopup(ctx, scanResult) {
+  if (!scanResult?.nameFr) {
+    console.error("drawScanPopup: nameFr manquant");
+    return;
+  }
+
+  const padding   = 20;
+  const lineHeight = 18;
+  const w = Math.min(520, ctx.canvas.width * 0.6);
+
+  // Pré-calculer les lignes de description pour déterminer la hauteur
+  ctx.font = THEME.font.mono;
+  const descLines = wrapText(ctx, scanResult.description ?? "", w - padding * 2);
+  const h = padding + 30 + 10 + descLines.length * lineHeight + 10 + 20 + padding;
+
+  const x = (ctx.canvas.width  - w) / 2;
+  const y = (ctx.canvas.height - h) / 2;
+
+  // Fond
+  ctx.fillStyle = "rgba(0, 0, 0, 0.92)";
+  ctx.fillRect(x, y, w, h);
+
+  // Bordure
+  ctx.strokeStyle = THEME.ui.borderAccent;
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(x, y, w, h);
+
+  // Titre : emoji + nom
+  ctx.fillStyle    = THEME.text.accent;
+  ctx.font         = THEME.font.subheading;
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "top";
+  const title = `${scanResult.emoji ?? "👁️"} ${scanResult.nameFr}`;
+  ctx.fillText(title, x + w / 2, y + padding);
+
+  // Description
+  ctx.fillStyle = THEME.text.primary;
+  ctx.font      = THEME.font.mono;
+  let textY = y + padding + 30 + 10;
+  for (const line of descLines) {
+    ctx.fillText(line, x + w / 2, textY);
+    textY += lineHeight;
+  }
+
+  // Instruction
+  ctx.fillStyle = THEME.text.muted;
+  ctx.font      = THEME.font.monoSmall;
+  ctx.fillText("[Échap] pour fermer", x + w / 2, y + h - padding - 10);
 
   ctx.textAlign    = "left";
   ctx.textBaseline = "top";

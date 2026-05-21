@@ -11,11 +11,12 @@ import { readFileSync }  from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createSession, getSession, deleteSession } from "./state/gameState.js";
-import { handlePlayerAction, generateDungeon } from "./game/world.js";
+import { handlePlayerAction, generateDungeon, findAdjacentCreature } from "./game/world.js";
 import { generateCandidate, rollDie, getStartingPosition } from "./game/player.js";
 import { resolveCombat }      from "./game/combat.js";
 import { computeFusionPreview, areCompatible } from "./game/forge.js";
 import { DEV_MODE }           from "./game/variables.js";
+import { buildDropTable, generateDrop } from "./game/loot.js";
 import { initSchema }         from "./db/schema.js";
 import {
   createPlayer              as dbCreatePlayer,
@@ -64,6 +65,9 @@ const bestiary = loadJSON("bestiary.json");
 // Dérivation : armes + boucliers (tout sauf les armures BO/HE/AR/LE)
 const armorCodes = ["BO", "HE", "AR", "LE"];
 const weapons = items.filter(i => !armorCodes.includes(i.code));
+
+// Table de drop pondérée (poids = nombre de tiers par type d'item)
+const dropTable = buildDropTable(items);
 
 app.get("/api/data/items",    (req, res) => res.json(items));
 app.get("/api/data/bestiary", (req, res) => res.json(bestiary));
@@ -291,6 +295,38 @@ io.on("connection", (socket) => {
     callback({ ok: true, state, specialType: result.specialType ?? null });
   });
 
+  socket.on("creature:scan", (data, callback) => {
+    const session = getSession(socket.id);
+    if (!session) return callback({ ok: false, error: "Session introuvable" });
+
+    const playerX = session.player.position.x;
+    const playerY = session.player.position.y;
+    const creatureIdx = findAdjacentCreature(session.dungeon, playerX, playerY);
+
+    if (creatureIdx === -1) {
+      return callback({ ok: false, error: "Aucune créature adjacente" });
+    }
+
+    const creature = session.dungeon.creatures[creatureIdx];
+    const creatureDef = bestiary.find(function findById(b) { return b.id === creature.id; });
+
+    if (!creatureDef) {
+      console.error(`[creature:scan] Def introuvable pour id="${creature.id}"`);
+      return callback({ ok: false, error: "Créature inconnue" });
+    }
+
+    // Marquer la créature comme scannée
+    creature.scanned = true;
+
+    callback({
+      ok: true,
+      creatureIndex: creatureIdx,
+      nameFr: creatureDef.nameFr,
+      description: creatureDef.description,
+      emoji: creatureDef.emoji
+    });
+  });
+
   socket.on("treasure:loot", (data, callback) => {
     const session = getSession(socket.id);
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
@@ -301,34 +337,7 @@ io.on("connection", (socket) => {
     treasure.looted = true;
 
     const etage = session.etage ?? 1;
-    // 21 weaponTypes (armes + boucliers) + 4 armorSlots = 25 chances
-    const armorSlots = ["tete", "corps", "bras", "jambes"];
-    const dropRoll = rollDie(0, weapons.length + armorSlots.length - 1);
-    const dropTier = rollDie(1, 2);
-
-    let drop;
-    if (dropRoll < weapons.length) {
-      // Arme ou bouclier
-      const randomWeapon = weapons[dropRoll];
-      const dropMat = rollDie(0, 1);
-      drop = {
-        itemType:   "weapon",
-        itemCode:   randomWeapon.code,
-        tier:       dropTier,
-        material:   dropMat,
-        affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
-      };
-    } else {
-      // Armure (pas de tirage de matériau)
-      const slot = armorSlots[dropRoll - weapons.length];
-      drop = {
-        itemType:   "armor",
-        slot,
-        tier:       dropTier,
-        material:   0,
-        affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
-      };
-    }
+    const drop = generateDrop(dropTable);
     dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
 
     try {
@@ -345,7 +354,7 @@ io.on("connection", (socket) => {
     if (!session?.runId) return callback({ ok: false, error: "Session introuvable" });
 
     session.etage = (session.etage ?? 1) + 1;
-    session.dungeon = generateDungeon(bestiary);
+    session.dungeon = generateDungeon(bestiary, session.etage);
     session.player.position = getStartingPosition(session.dungeon.grid);
     session.turn = 0;
 
@@ -423,7 +432,11 @@ io.on("connection", (socket) => {
       const creatureDef = bestiary.find(b => b.id === creature.id);
       if (!creatureDef)  return callback({ ok: false, error: `Def introuvable pour id="${creature.id}"` });
 
-      const creatureWeaponDef = weapons.find(w => w.code === creatureDef.equipment?.rightHand?.code);
+      // Armes de la créature (main droite = arme principale, main gauche = arme secondaire)
+      const creatureWeaponDef  = weapons.find(w => w.code === creatureDef.equipment?.rightHand?.code);
+      const creatureWeaponDefL = creatureDef.equipment?.leftHand
+        ? weapons.find(w => w.code === creatureDef.equipment.leftHand.code)
+        : null;
 
       // HP joueur depuis BDD (0 = premier combat → le moteur utilisera hpMax)
       const character  = dbGetCharacter(session.runId);
@@ -442,17 +455,13 @@ io.on("connection", (socket) => {
       // Arme par défaut (mains nues) si aucune arme équipée
       const defaultWeaponDef = { code: "FIST", typeArme: "Mains nues", dist: 1, weight: 0, damFirst: 3, damLast: 8, models: ["Mains nues"], weightFO: 1, weightTA: 0.5, weightIN: 0, weightVI: 0.5, weightAD: 1 };
 
-      // Normaliser les clés de la tactique joueur (le client envoie eo/na/en en minuscules)
+      // Normaliser la tactique joueur (objet unique {EO, NA, EN})
       const rawTactic = data.tactic ?? data.strategy;
-      const normalizedTactic = Array.isArray(rawTactic)
-        ? rawTactic.map(function normalizeTacticEntry(entry) {
-            return {
-              EO: entry.EO ?? entry.eo ?? 5,
-              NA: entry.NA ?? entry.na ?? 5,
-              EN: entry.EN ?? entry.en ?? 5
-            };
-          })
-        : rawTactic;
+      const normalizedTactic = {
+        EO: rawTactic?.EO ?? rawTactic?.eo ?? 5,
+        NA: rawTactic?.NA ?? rawTactic?.na ?? 5,
+        EN: rawTactic?.EN ?? rawTactic?.en ?? 5
+      };
 
       const playerData = {
         name:       session.player.name,
@@ -461,15 +470,18 @@ io.on("connection", (socket) => {
         tactic:     normalizedTactic,
         weaponDef:  playerWeaponDef ?? defaultWeaponDef,
         weaponItem: equippedItem ?? { tier: 1, material: 0, affinities: {} },
-        equipment:  null  // armures non implémentées
+        equipment:  null,  // armures non implémentées
+        scanMalus:  !creature.scanned
       };
 
       const creatureData = {
         nameFr:    creatureDef.nameFr,
         stats:     creatureDef.stats,
         hp:        creatureHp,
-        weaponDef: creatureWeaponDef ?? defaultWeaponDef,
-        weaponItem: creatureDef.equipment?.rightHand ?? { tier: 1, material: 0, affinities: {} },
+        weaponDef:   creatureWeaponDef ?? defaultWeaponDef,
+        weaponItem:  creatureDef.equipment?.rightHand ?? { tier: 1, material: 0, affinities: {} },
+        weaponDefL:  creatureWeaponDefL ?? null,
+        weaponItemL: creatureDef.equipment?.leftHand ?? null,
         equipment: creatureDef.equipment,
         tactic:    creatureDef.tactic ?? creatureDef.strategy,
         family:    creatureDef.family
@@ -514,33 +526,7 @@ io.on("connection", (socket) => {
         }
 
         // ─── Butin : item aléatoire après chaque victoire ──────────────────────
-        // 21 weaponTypes (armes + boucliers) + 4 armorSlots = 25 chances
-        const armorSlots = ["tete", "corps", "bras", "jambes"];
-        const dropRoll = rollDie(0, weapons.length + armorSlots.length - 1);
-        const dropTier = rollDie(1, 2);
-
-        if (dropRoll < weapons.length) {
-          // Arme ou bouclier
-          const randomWeapon = weapons[dropRoll];
-          const dropMat = rollDie(0, 1);
-          drop = {
-            itemType:   "weapon",
-            itemCode:   randomWeapon.code,
-            tier:       dropTier,
-            material:   dropMat,
-            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
-          };
-        } else {
-          // Armure (pas de tirage de matériau)
-          const slot = armorSlots[dropRoll - weapons.length];
-          drop = {
-            itemType:   "armor",
-            slot,
-            tier:       dropTier,
-            material:   0,
-            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
-          };
-        }
+        drop = generateDrop(dropTable);
         dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
       }
 

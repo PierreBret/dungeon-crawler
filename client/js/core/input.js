@@ -28,6 +28,12 @@ export function setupInput(state) {
 function handleDungeonInput(state, e) {
   if (!state.player || !state.dungeon) return;
 
+  // Popup de scan affichée — Escape pour fermer
+  if (state.scanResult) {
+    if (e.key === "Escape") state.scanResult = null;
+    return;
+  }
+
   // Notification de trésor affichée — Enter pour fermer
   if (state.treasureDrop) {
     if (e.key === "Enter") state.treasureDrop = null;
@@ -60,6 +66,17 @@ function handleDungeonInput(state, e) {
         const creature = state.dungeon.creatures[ci];
         launchCombatPrep(state, { creature });
       }
+    });
+  }
+
+  if (e.key === "e" || e.key === "E") {
+    socket.emit("creature:scan", {}, function onScanResponse(response) {
+      if (!response.ok) return;
+      state.scanResult = {
+        nameFr:      response.nameFr,
+        description: response.description,
+        emoji:       response.emoji
+      };
     });
   }
 
@@ -125,7 +142,7 @@ function launchCombatPrep(state, confirmData) {
   const creatureDef = gameData.bestiary.find(b => b.id === (creature.id ?? "goblin_scout"));
   if (!creatureDef) { console.error(`launchCombatPrep: def introuvable pour id="${creature.id}"`); return; }
 
-  const emptyStrategy = Array.from({ length: 5 }, () => ({ eo: null, na: null, en: null }));
+  const emptyStrategy = { eo: null, na: null, en: null };
 
   socket.emit("inventory:get", {}, function onInventoryLoaded(response) {
     state.combat = {
@@ -134,7 +151,6 @@ function launchCombatPrep(state, confirmData) {
       creature:       creatureDef,
       inventory:      response.ok ? response.inventory : [],
       strategy:       emptyStrategy,
-      selectedMinute: 0,
       selectedRow:    0
     };
     state.screen = SCREENS.COMBAT_PREP;
@@ -145,8 +161,7 @@ function handleCombatPrepInput(state, e) {
   const combat = state.combat;
   if (!combat) return;
 
-  const selMin = combat.selectedMinute ?? 0;
-  const selRow = combat.selectedRow    ?? 0;
+  const selRow = combat.selectedRow ?? 0;
 
   if (e.key === "Escape") {
     state.screen = SCREENS.DUNGEON;
@@ -160,47 +175,32 @@ function handleCombatPrepInput(state, e) {
     return;
   }
 
-  if (e.key === "ArrowLeft")  { combat.selectedMinute = Math.max(0, selMin - 1); return; }
-  if (e.key === "ArrowRight") { combat.selectedMinute = Math.min(4, selMin + 1); return; }
-
   if (e.key === "ArrowUp" || e.key === "ArrowDown") {
     const rowKey  = ["eo", "na", "en"][selRow];
-    const current = combat.strategy[selMin]?.[rowKey] ?? 5;
+    const current = combat.strategy[rowKey] ?? 5;
     const newVal  = Math.min(10, Math.max(1, current + (e.key === "ArrowUp" ? 1 : -1)));
-    setStrategyValue(combat, selMin, selRow, newVal);
+    combat.strategy[rowKey] = newVal;
     return;
   }
 
   if (/^[0-9]$/.test(e.key)) {
-    setStrategyValue(combat, selMin, selRow, e.key === "0" ? 10 : parseInt(e.key));
+    const rowKey = ["eo", "na", "en"][selRow];
+    combat.strategy[rowKey] = e.key === "0" ? 10 : parseInt(e.key);
     return;
   }
 
   if (e.key === "Enter") {
-    const s1 = combat.strategy[0];
-    if (!s1.eo || !s1.na || !s1.en) { console.warn("Stratégie minute 1 incomplète"); return; }
+    const s = combat.strategy;
+    if (!s.eo || !s.na || !s.en) { console.warn("Stratégie incomplète"); return; }
     launchCombat(state);
   }
-}
-
-function setStrategyValue(combat, minute, row, value) {
-  const rowKey = ["eo", "na", "en"][row];
-  // Minute 1 : dupliquer sur les cases encore vides
-  if (minute === 0) {
-    for (let m = 0; m < 5; m++) {
-      if (!combat.strategy[m]) combat.strategy[m] = { eo: null, na: null, en: null };
-      if (combat.strategy[m][rowKey] === null) combat.strategy[m][rowKey] = value;
-    }
-  }
-  if (!combat.strategy[minute]) combat.strategy[minute] = { eo: null, na: null, en: null };
-  combat.strategy[minute][rowKey] = value;
 }
 
 function launchCombat(state) {
   const combat = state.combat;
 
   socket.emit("combat:resolve", {
-    strategy:      combat.strategy,
+    tactic:        combat.strategy,
     creatureIndex: combat.creatureIndex
   }, function onCombatResolved(response) {
     if (!response.ok) { console.error("Erreur combat:resolve :", response.error); return; }

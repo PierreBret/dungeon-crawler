@@ -4,11 +4,10 @@
 
   Layout :
     Colonne gauche  : infos créature
-    Colonne centrale : équipement joueur + grille stratégie 5×3
-    Colonne droite  : scores dérivés calculés avec la stratégie minute 1
+    Colonne centrale : équipement joueur + grille stratégie
+    Colonne droite  : scores dérivés calculés avec la stratégie
 
   Navigation :
-    ←/→  : naviguer entre les minutes
     Tab  : naviguer entre EO / NA / EN
     ↑/↓ ou 1-9/0 : modifier la valeur (0 = 10)
     Entrée : valider et lancer le combat
@@ -188,7 +187,7 @@ function drawPlayerPanel(ctx, combatState, player, x, y, w, h, padding) {
   // Légende
   ctx.fillStyle = THEME.text.muted;
   ctx.font      = THEME.font.small;
-  ctx.fillText("←/→ minute  •  Tab EO/NA/EN  •  ↑/↓ ou 1-9/0 valeur", cx, cy);
+  ctx.fillText("Tab EO/NA/EN  •  ↑/↓ ou 1-9/0 valeur", cx, cy);
   cy += 18;
   ctx.fillText("Entrée — combattre  •  Échap — retour au donjon", cx, cy);
 
@@ -199,48 +198,36 @@ function drawPlayerPanel(ctx, combatState, player, x, y, w, h, padding) {
 
 function drawStrategyGrid(ctx, combatState, x, y, w) {
   const strategy  = combatState.strategy;
-  const selMin    = combatState.selectedMinute ?? 0;
-  const selRow    = combatState.selectedRow    ?? 0;
+  const selRow    = combatState.selectedRow ?? 0;
   const rowLabels = ["EO", "NA", "EN"];
-  const colLabels = ["1", "2", "3", "4", "5+"];
   const rowKeys   = ["eo", "na", "en"];
 
-  const cellW  = Math.floor((w - 30) / 5);
+  const cellW  = Math.floor((w - 30) / 2);
   const cellH  = 36;
   const labelW = 30;
 
-  // En-têtes colonnes
-  ctx.font      = THEME.font.mono;
-  ctx.fillStyle = THEME.text.secondary;
-  ctx.textAlign = "center";
-  for (let m = 0; m < 5; m++) {
-    ctx.fillText(colLabels[m], x + labelW + m * cellW + cellW / 2, y);
-  }
-
   for (let row = 0; row < 3; row++) {
-    const rowY = y + 24 + row * cellH;
+    const rowY = y + row * cellH;
 
     ctx.font      = THEME.components.statLabel.font;
     ctx.fillStyle = THEME.components.statLabel.color;
     ctx.textAlign = "left";
     ctx.fillText(rowLabels[row], x, rowY + 8);
 
-    for (let col = 0; col < 5; col++) {
-      const cellX      = x + labelW + col * cellW;
-      const isSelected = col === selMin && row === selRow;
-      const value      = strategy[col]?.[rowKeys[row]];
+    const cellX      = x + labelW;
+    const isSelected = row === selRow;
+    const value      = strategy[rowKeys[row]];
 
-      ctx.fillStyle   = isSelected ? THEME.ui.bgSelected : THEME.ui.bgItem;
-      ctx.fillRect(cellX + 2, rowY + 2, cellW - 4, cellH - 4);
-      ctx.strokeStyle = isSelected ? THEME.ui.borderAccent : THEME.ui.border;
-      ctx.lineWidth   = isSelected ? 2 : 1;
-      ctx.strokeRect(cellX + 2, rowY + 2, cellW - 4, cellH - 4);
+    ctx.fillStyle   = isSelected ? THEME.ui.bgSelected : THEME.ui.bgItem;
+    ctx.fillRect(cellX + 2, rowY + 2, cellW - 4, cellH - 4);
+    ctx.strokeStyle = isSelected ? THEME.ui.borderAccent : THEME.ui.border;
+    ctx.lineWidth   = isSelected ? 2 : 1;
+    ctx.strokeRect(cellX + 2, rowY + 2, cellW - 4, cellH - 4);
 
-      ctx.font      = THEME.components.statValue.font;
-      ctx.fillStyle = value != null ? (isSelected ? THEME.text.accent : THEME.text.primary) : THEME.text.disabled;
-      ctx.textAlign = "center";
-      ctx.fillText(value != null ? String(value) : "—", cellX + cellW / 2, rowY + 10);
-    }
+    ctx.font      = THEME.components.statValue.font;
+    ctx.fillStyle = value != null ? (isSelected ? THEME.text.accent : THEME.text.primary) : THEME.text.disabled;
+    ctx.textAlign = "center";
+    ctx.fillText(value != null ? String(value) : "—", cellX + cellW / 2, rowY + 10);
   }
 
   ctx.textAlign = "left";
@@ -262,14 +249,14 @@ function drawScoresPanel(ctx, combatState, player, x, y, w, h, padding) {
 
   ctx.fillStyle = THEME.text.muted;
   ctx.font      = THEME.font.small;
-  ctx.fillText("(basé sur minute 1)", cx, cy);
+  ctx.fillText("(scores estimés)", cx, cy);
   cy += 24;
 
   const stats = player.stats;
-  const s1    = combatState.strategy?.[0] ?? {};
-  const eo    = s1.eo ?? 5;
-  const na    = s1.na ?? 5;
-  const en    = s1.en ?? 5;
+  const s     = combatState.strategy ?? {};
+  const eo    = s.eo ?? 5;
+  const na    = s.na ?? 5;
+  const en    = s.en ?? 5;
 
   function sm(v) { return 0.8 + ((v ?? 5) - 1) * (0.4 / 9); }
 

@@ -62,16 +62,4 @@ describe('mainLoop — Boucle principale du combat', () => {
 
     expect(result.log.length).toBeGreaterThan(0);
   });
-
-  it('should log "=== Minute 1 ===" at the start', () => {
-    const playerData = makeTestCombatantData();
-    const creatureData = makeTestCombatantData();
-    const state = initCombatState(playerData, creatureData, COMBAT);
-
-    const result = mainLoop(state, COMBAT, Math.random);
-
-    const minuteLogs = result.log.filter(e => e.type === 'separator' && e.text.includes('Minute 1'));
-    expect(minuteLogs.length).toBeGreaterThanOrEqual(1);
-    expect(minuteLogs[0].text).toBe('=== Minute 1 ===');
-  });
 });

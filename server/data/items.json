@@ -250,5 +250,77 @@
     "weaponType": "Legs Armor",
     "typeArme": "Armure jambes",
     "models": ["Sandals", "Boots", "Long Boots", "Cuisse", "Light Greave", "Ring Legging", "Chain Leggings", "Fuzzkampf", "Poleyn", "Jambeau", "Missaglia", "Plate Leggings", "Fluted Leggings", "Hoplite Leggings", "Jazeraint Leggings", "Dread Leggings"]
+  },
+  {
+    "code": "CL",
+    "image": "",
+    "weaponType": "Claws",
+    "typeArme": "Griffes",
+    "damageType": "Slash",
+    "natural": true,
+    "models": ["Griffes", "Griffes pointues", "Griffes aiguisées", "Griffes acérées", "Griffes tranchantes", "Griffes monstrueuses", "Griffes de prédateur", "Griffes démoniaques", "Griffes du Tartare", "Griffes primordiales"],
+    "hd": 1, "fo": 3, "ta": 2, "in": 4, "ad": 10,
+    "weightFO": 0.5, "weightTA": 0.0, "weightIN": 0.2, "weightVI": 0.8, "weightAD": 1.5,
+    "weight": 0, "speed": 9, "dist": 1, "damFirst": 8, "damLast": 38
+  },
+  {
+    "code": "BI",
+    "image": "",
+    "weaponType": "Bite",
+    "typeArme": "Morsure",
+    "damageType": "Piercing",
+    "natural": true,
+    "models": ["Morsure", "Crocs acérés", "Crocs tranchants", "Morsure puissante", "Crocs venimeux", "Morsure dévastatrice", "Crocs de bête", "Crocs monstrueux", "Crocs du Tartare", "Morsure primordiale"],
+    "hd": 1, "fo": 5, "ta": 3, "in": 3, "ad": 8,
+    "weightFO": 0.8, "weightTA": 0.1, "weightIN": 0.1, "weightVI": 0.6, "weightAD": 1.4,
+    "weight": 0, "speed": 7, "dist": 1, "damFirst": 10, "damLast": 44
+  },
+  {
+    "code": "HO",
+    "image": "",
+    "weaponType": "Horn",
+    "typeArme": "Corne",
+    "damageType": "Impact",
+    "natural": true,
+    "models": ["Corne", "Corne solide", "Corne acérée", "Corne puissante", "Corne massive", "Corne de guerre", "Corne de titan", "Corne monstrueuse", "Corne du Tartare", "Corne primordiale"],
+    "hd": 1, "fo": 8, "ta": 5, "in": 3, "ad": 6,
+    "weightFO": 1.2, "weightTA": 0.4, "weightIN": 0.1, "weightVI": 0.5, "weightAD": 0.8,
+    "weight": 0, "speed": 5, "dist": 2, "damFirst": 12, "damLast": 52
+  },
+  {
+    "code": "PT",
+    "image": "",
+    "weaponType": "Paw",
+    "typeArme": "Coup de patte",
+    "damageType": "Blunt",
+    "natural": true,
+    "models": ["Coup de patte", "Patte lourde", "Frappe brutale", "Patte écrasante", "Patte de guerre", "Frappe dévastatrice", "Patte de colosse", "Patte monstrueuse", "Patte du Tartare", "Frappe primordiale"],
+    "hd": 1, "fo": 10, "ta": 4, "in": 3, "ad": 5,
+    "weightFO": 1.4, "weightTA": 0.3, "weightIN": 0.1, "weightVI": 0.3, "weightAD": 0.9,
+    "weight": 0, "speed": 5, "dist": 1, "damFirst": 13, "damLast": 55
+  },
+  {
+    "code": "TL",
+    "image": "",
+    "weaponType": "Tail",
+    "typeArme": "Coup de queue",
+    "damageType": "Blunt",
+    "natural": true,
+    "models": ["Coup de queue", "Queue cinglante", "Queue puissante", "Fouet de queue", "Queue écrasante", "Queue de guerre", "Queue de titan", "Queue monstrueuse", "Queue du Tartare", "Queue primordiale"],
+    "hd": 1, "fo": 9, "ta": 6, "in": 4, "ad": 7,
+    "weightFO": 1.1, "weightTA": 0.5, "weightIN": 0.2, "weightVI": 0.4, "weightAD": 0.8,
+    "weight": 0, "speed": 6, "dist": 3, "damFirst": 11, "damLast": 50
+  },
+  {
+    "code": "SK",
+    "image": "",
+    "weaponType": "Hooves",
+    "typeArme": "Sabots",
+    "damageType": "Blunt",
+    "natural": true,
+    "models": ["Sabots", "Sabots ferrés", "Sabots lourds", "Ruade puissante", "Sabots de guerre", "Ruade dévastatrice", "Sabots de titan", "Sabots monstrueux", "Sabots du Tartare", "Ruade primordiale"],
+    "hd": 1, "fo": 11, "ta": 5, "in": 3, "ad": 6,
+    "weightFO": 1.4, "weightTA": 0.3, "weightIN": 0.1, "weightVI": 0.4, "weightAD": 0.8,
+    "weight": 0, "speed": 5, "dist": 2, "damFirst": 14, "damLast": 58
   }
 ]

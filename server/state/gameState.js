@@ -18,11 +18,11 @@ class GameSession {
 
     this.socketId      = socketId;
     this.bestiary      = bestiary; // référence pour getSpecialTile dans world.js
-    this.dungeon       = generateDungeon(bestiary);
+    this.etage         = 1;
+    this.dungeon       = generateDungeon(bestiary, this.etage);
     this.player        = createPlayer(candidate, this.dungeon.grid);
     this.screen        = "dungeon";
     this.turn          = 0;
-    this.etage         = 1;
     this.combatLog     = [];
     this.augmentations = {}; // { stat: nbAugmentations }
   }

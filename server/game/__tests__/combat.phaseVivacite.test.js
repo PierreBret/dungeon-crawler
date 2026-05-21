@@ -17,8 +17,6 @@ import { phaseVivacite } from '../combat.js';
  */
 function makeState(playerVivacite, playerFatigue, creatureVivacite, creatureFatigue) {
   return {
-    minute: 1,
-    tempo: 1,
     distance: 5,
     attacker: null,
     devMode: false,

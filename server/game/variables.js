@@ -4,12 +4,11 @@
 */
 
 // ─── Mode développement ───────────────────────────────────────────────────────
-export const DEV_MODE = true;
+export const DEV_MODE = false;
 
 // ─── Configuration du combat ──────────────────────────────────────────────────
 export const COMBAT = {
   // ─── Variables configurables (pseudo-code) ──────────────────────────────────
-  nbTempoParMinute: 20,       // NBTEMPOPARMMINUTE
   distanceInitiale: 10,       // DISTANCE
   alternance: 30,             // Alternance
   seuilEndurance1: 40,        // seuilEndurance1
@@ -18,7 +17,7 @@ export const COMBAT = {
   seuilEndurance4: 10,        // seuilEndurance4
 
   // ─── Sécurité boucle principale ────────────────────────────────────────────
-  maxMinutes: 20,             // Nombre max de minutes avant match nul
+  maxIterations: 500,         // Nombre max d'itérations avant match nul
 
   // ─── Compétences dérivées — coefficients ────────────────────────────────────
   skills: {

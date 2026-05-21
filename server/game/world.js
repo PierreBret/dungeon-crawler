@@ -128,21 +128,20 @@ function generateGrid(rows, cols, extraPaths) {
 // ─── Placement des éléments ───────────────────────────────────────────────────
 
 /**
- * @param {Array} bestiary — liste des créatures du bestiary (filtrée par tier)
+ * @param {Array} bestiary — liste des créatures du bestiary (filtrée par niveau)
  */
 function placeElements(grid, bestiary) {
   const tiles = shuffle(getWalkableTiles(grid));
 
-  if (tiles.length < 8) {
+  if (tiles.length < 9) {
     console.warn("Donjon trop petit pour placer tous les éléments");
   }
 
   let idx = 0;
 
-  // 4 créatures — id assigné depuis le bestiary selon le tier du donjon
+  // 5 créatures — sélection aléatoire parmi le bestiary éligible pour ce niveau
   const creatures = [];
-  for (let i = 0; i < 4; i++) {
-    // Sélection aléatoire dans le bestiary disponible
+  for (let i = 0; i < 5; i++) {
     const creatureDef = bestiary[Math.floor(Math.random() * bestiary.length)];
     creatures.push({
       x:        tiles[idx].x,
@@ -171,12 +170,27 @@ function placeElements(grid, bestiary) {
 
 /**
  * @param {Array} bestiary — chargé depuis bestiary.json côté serveur
+ * @param {number} dungeonLevel — niveau du donjon (étage)
  */
-export function generateDungeon(bestiary) {
+export function generateDungeon(bestiary, dungeonLevel) {
   if (!bestiary?.length) throw new Error("generateDungeon: bestiary manquant ou vide");
+  if (dungeonLevel == null) throw new Error("generateDungeon: dungeonLevel manquant");
+
+  // Filtrer les créatures éligibles pour ce niveau (levelMin <= dungeonLevel <= levelMax)
+  // Les boss (boss: true) sont exclus — ils sont utilisés séparément
+  const eligible = bestiary.filter(function filterByLevel(c) {
+    if (c.boss) return false;
+    return c.levelMin <= dungeonLevel && dungeonLevel <= c.levelMax;
+  });
+
+  if (eligible.length === 0) {
+    console.error(`generateDungeon: aucune créature éligible pour le niveau ${dungeonLevel}`);
+    throw new Error(`generateDungeon: aucune créature éligible pour le niveau ${dungeonLevel}`);
+  }
+
   const { rows, cols, extraPaths } = DUNGEON_CONFIG;
   const grid = generateGrid(rows, cols, extraPaths);
-  const { creatures, forge, training, exit, treasure } = placeElements(grid, bestiary);
+  const { creatures, forge, training, exit, treasure } = placeElements(grid, eligible);
   return { grid, creatures, forge, training, exit, treasure };
 }
 
@@ -491,6 +505,20 @@ function confirmMove(session, dx, dy) {
   if (newX < 0 || newX >= dungeon.grid[0].length) return { ok: false, error: "Hors limites" };
   if (dungeon.grid[newY][newX] !== 0)             return { ok: false, error: "Mur" };
 
+  // Vérifier si une créature occupe la case cible — combat immédiat, pas de moveCreatures
+  const creatureIdx = dungeon.creatures.findIndex(function findCreatureAtTarget(c) {
+    return !c.defeated && c.x === newX && c.y === newY;
+  });
+
+  if (creatureIdx !== -1) {
+    // Le joueur engage la créature : combat déclenché avant tout mouvement de créatures
+    player.position.x = newX;
+    player.position.y = newY;
+    session.turn++;
+    return { ok: true, specialType: "creature", creatureCombat: creatureIdx };
+  }
+
+  // Pas de créature sur la case — déplacement normal + mouvement des créatures
   player.position.x = newX;
   player.position.y = newY;
   session.turn++;
@@ -537,4 +565,37 @@ export function handlePlayerAction(session, action) {
     default:
       return { ok: false, error: `Action inconnue : ${action.type}` };
   }
+}
+
+// ─── Scan de créature adjacente ───────────────────────────────────────────────
+
+/**
+ * Cherche une créature vivante sur une case adjacente (cardinale uniquement).
+ * Retourne l'index de la créature trouvée, ou -1 si aucune.
+ *
+ * @param {object} dungeon — donjon courant (contient creatures)
+ * @param {number} playerX — position X du joueur
+ * @param {number} playerY — position Y du joueur
+ * @returns {number} Index de la créature adjacente, ou -1
+ */
+export function findAdjacentCreature(dungeon, playerX, playerY) {
+  if (!dungeon?.creatures) return -1;
+
+  const directions = [
+    { dx: 0, dy: -1 },
+    { dx: 0, dy:  1 },
+    { dx: -1, dy: 0 },
+    { dx:  1, dy: 0 }
+  ];
+
+  for (const { dx, dy } of directions) {
+    const tx = playerX + dx;
+    const ty = playerY + dy;
+    const idx = dungeon.creatures.findIndex(function isAdjacentAlive(c) {
+      return !c.defeated && c.x === tx && c.y === ty;
+    });
+    if (idx !== -1) return idx;
+  }
+
+  return -1;
 }

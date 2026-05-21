@@ -40,7 +40,7 @@ describe('phaseAttaque', () => {
     state.player.endurance = 1; // Not enough for attack cost (poids=4 + NA=5 + surcout)
     const rng = () => 0.5;
     const result = phaseAttaque(state, rng);
-    expect(result.skipToNextTempo).toBe(true);
+    expect(result.skipToVivacite).toBe(true);
     // flushLogs() est appelé dans ce cas → entrées dans state.log
     expect(result.log.some(l => l.type === 'recovery')).toBe(true);
   });
@@ -75,13 +75,5 @@ describe('phaseAttaque', () => {
     const result = phaseAttaque(state, rng);
     // Pas de flushLogs() pour hit/miss → entrées dans logBuffer
     expect(result.logBuffer.some(l => l.type === 'attack' || l.type === 'miss')).toBe(true);
-  });
-
-  it('increments tempo by weapon dist on attack', () => {
-    const state = makeState();
-    const initialTempo = state.tempo;
-    const rng = () => 0.01;
-    phaseAttaque(state, rng);
-    expect(state.tempo).toBe(initialTempo + state.player.weapon.dist);
   });
 });

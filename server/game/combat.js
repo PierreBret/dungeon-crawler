@@ -286,7 +286,7 @@ export function computeDefenseCost(na, surcout) {
 // ─── Phase de Vivacité ─────────────────────────────────────────────────────────
 
 /**
- * Phase de Vivacité — détermine qui est ATT et qui est DEF pour la minute.
+ * Phase de Vivacité — détermine qui est ATT et qui est DEF.
  *
  * Formule : VIVACITYQUALITY = VIVACITY - D100 + ALTERNANCE - FATIGUE
  *
@@ -387,8 +387,8 @@ export function phaseVivacite(state, rng) {
 export function phasePositionnement(state) {
   const att = state[state.attacker];
 
-  // Tactique de la minute courante pour ATT
-  const tactics = att.tactics[Math.min(state.minute - 1, att.tactics.length - 1)];
+  // Tactique globale pour ATT
+  const tactics = att.tactics[0];
 
   // NA effectif plafonné par le naCap du palier de fatigue
   const effectiveNA = Math.min(tactics.NA, att.naCap);
@@ -439,13 +439,13 @@ export function phasePositionnement(state) {
  * Algorithme (conforme à la spec) :
  * 1. Si ATT.END < COUTENDURANCEATTAQUE :
  *    - Log fatigue, récupération des deux combattants
- *    - TEMPO += 1, goto Phase de riposte
+ *    - goto Phase de vivacité
  * 2. Sinon (ATTAQUE) :
  *    - Jet d'attaque : quality = ATT.ATTACK - D100 - ATT.FATIGUE
  *    - Log "ATT attaque avec WEAPON"
  *    - ATT.END -= COUTENDURANCEATTAQUE
- *    - Si quality < 0 (RATÉ) : TEMPO += ATT.WEAPON.DIST, goto Phase de riposte
- *    - Sinon (RÉUSSI) : TEMPO += ATT.WEAPON.DIST, goto Phase de défense
+ *    - Si quality < 0 (RATÉ) : goto Phase de riposte
+ *    - Sinon (RÉUSSI) : goto Phase de défense
  *
  * @param {CombatState} state - État courant
  * @param {Function} rng - Générateur aléatoire
@@ -458,8 +458,8 @@ export function phaseAttaque(state, rng) {
   const defKey = state.attacker === 'player' ? 'creature' : 'player';
   const def = state[defKey];
 
-  // Tactique de la minute courante pour ATT
-  const tactics = att.tactics[Math.min(state.minute - 1, att.tactics.length - 1)];
+  // Tactique globale pour ATT
+  const tactics = att.tactics[0];
 
   // NA effectif plafonné par le naCap du palier de fatigue
   const effectiveNA = Math.min(tactics.NA, att.naCap);
@@ -479,15 +479,11 @@ export function phaseAttaque(state, rng) {
     def.endurance = def.endurance + COMBAT.gainRecuperation;
     logDev(state, 'debug', `(${att.name} Endurance : ${att.endurance} | ${def.name} Endurance : ${def.endurance})`);
 
-    // TEMPO = TEMPO + 1
-    logDev(state, 'debug', `Tempo ${state.tempo} → ${state.tempo + 1})`);
-    state.tempo += 1;
-
     log(state, 'recovery', '');
     flushLogs(state);
 
     // goto Phase de vivacité
-    state.skipToNextTempo = true;
+    state.skipToVivacite = true;
     return state;
   }
 
@@ -512,10 +508,6 @@ export function phaseAttaque(state, rng) {
     logDev(state, 'debug', `(Attaque : ${att.effective.attaque} | D100 : ${d100} | Qualité : ${attackQuality})`);
     logDev(state, 'debug', `(Endurance : ${att.endurance} / ${att.endMax} | Coût attaque : ${attackCost})`);
 
-    // TEMPO = TEMPO + ATT.WEAPON.DIST
-    logDev(state, 'debug', `Tempo ${state.tempo} → ${state.tempo + att.weapon.dist})`);
-    state.tempo += att.weapon.dist;
-
     // goto Phase de riposte (géré par la boucle principale)
   } else {
     // ─── ATTAQUE RÉUSSIE ────────────────────────────────────────────────
@@ -524,10 +516,6 @@ export function phaseAttaque(state, rng) {
     log(state, 'attack', `... et touche son adversaire`);
     logDev(state, 'debug', `(Attaque : ${att.effective.attaque} | D100 : ${d100} | Qualité : ${attackQuality})`);
     logDev(state, 'debug', `(Endurance : ${att.endurance} / ${att.endMax} | Coût attaque : ${attackCost})`);
-
-    // TEMPO = TEMPO + ATT.WEAPON.DIST
-    logDev(state, 'debug', `Tempo ${state.tempo} → ${state.tempo + att.weapon.dist})`);
-    state.tempo += att.weapon.dist;
 
     // goto Phase de défense (géré par la boucle principale)
   }
@@ -552,7 +540,7 @@ export function phaseDefense(state, rng) {
   const defKey = state.attacker === 'player' ? 'creature' : 'player';
   const def = state[defKey];
 
-  const tacticIndex = Math.min(state.minute - 1, def.tactics.length - 1);
+  const tacticIndex = 0;
   const tactics = def.tactics[tacticIndex];
   const effectiveNA = Math.min(tactics.NA, def.naCap);
 
@@ -945,8 +933,6 @@ export function initCombatState(playerData, creatureData, config) {
   const creature = buildCombatant(creatureData, config);
 
   return {
-    minute: 1,
-    tempo: 1,
     distance: config.distanceInitiale,
     attacker: null,
     nextPhase: null,
@@ -1043,19 +1029,21 @@ function buildCombatant(data, config) {
  * Boucle principale du combat.
  *
  * Structure :
- * - Boucle externe sur les minutes (1 à config.maxMinutes)
- *   - Récupère les tactiques de la minute pour chaque combattant
- *   - Applique le plafond NA de fatigue aux tactiques
- *   - Calcule les compétences effectives (ajustements tactiques)
- *   - Phase Vivacité (une fois par minute) pour déterminer ATT/DEF
- *   - Boucle interne sur les tempos (1 à config.nbTempoParMinute)
- *     - Phase Attaque (repositionnement + jet d'attaque)
+ * - Tactiques globales (une seule tactique par combattant pour tout le combat)
+ * - Applique le plafond NA de fatigue aux tactiques
+ * - Calcule les compétences effectives (ajustements tactiques)
+ * - Phase Vivacité pour déterminer ATT/DEF
+ * - Boucle sur les itérations :
+ *     - Phase Positionnement
+ *     - Phase Attaque
  *     - Phase Défense (si attaque touche)
  *     - Phase Résolution Dégâts (si attaque touche et défense échoue)
  *     - Vérification condition de fin (HP ≤ 0)
  *     - Phase Initiative
  *     - Phase Riposte (si initiative perdue)
- * - Match nul si maxMinutes dépassé
+ *     - TestEndurance
+ *     - Phase Vivacité
+ * - Match nul si maxIterations dépassé
  *
  * @param {CombatState} state - État initial du combat
  * @param {object} config - COMBAT config
@@ -1065,32 +1053,30 @@ function buildCombatant(data, config) {
  * Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7
  */
 export function mainLoop(state, config, rng) {
-  // ─── Phase début minute (première minute) ─────────────────────────────────
-  state.minute = 1;
+  // ─── Tactiques globales ─────────────────────────────────────────────────────
+  const playerTactics = state.player.tactics[0];
+  const creatureTactics = state.creature.tactics[0];
 
-  // Tactiques de la minute
-  let playerTacticIndex = Math.min(state.minute - 1, state.player.tactics.length - 1);
-  let creatureTacticIndex = Math.min(state.minute - 1, state.creature.tactics.length - 1);
-  let playerTactics = state.player.tactics[playerTacticIndex];
-  let creatureTactics = state.creature.tactics[creatureTacticIndex];
+  // Fonction utilitaire : recalcule les compétences effectives
+  function recalcEffective() {
+    const playerEffNA = Math.min(playerTactics.NA, state.player.naCap);
+    const creatureEffNA = Math.min(creatureTactics.NA, state.creature.naCap);
 
-  // Appliquer le plafond NA de fatigue
-  let playerEffNA = Math.min(playerTactics.NA, state.player.naCap);
-  let creatureEffNA = Math.min(creatureTactics.NA, state.creature.naCap);
+    state.player.effective = computeEffectiveSkills(
+      state.player.percentages,
+      { EO: playerTactics.EO, NA: playerEffNA, EN: playerTactics.EN },
+      state.distance, state.player.weapon.dist, config
+    );
+    state.creature.effective = computeEffectiveSkills(
+      state.creature.percentages,
+      { EO: creatureTactics.EO, NA: creatureEffNA, EN: creatureTactics.EN },
+      state.distance, state.creature.weapon.dist, config
+    );
+  }
 
-  // Calcul des compétences effectives
-  state.player.effective = computeEffectiveSkills(
-    state.player.percentages,
-    { EO: playerTactics.EO, NA: playerEffNA, EN: playerTactics.EN },
-    state.distance, state.player.weapon.dist, config
-  );
-  state.creature.effective = computeEffectiveSkills(
-    state.creature.percentages,
-    { EO: creatureTactics.EO, NA: creatureEffNA, EN: creatureTactics.EN },
-    state.distance, state.creature.weapon.dist, config
-  );
+  // Calcul initial des compétences effectives
+  recalcEffective();
 
-  log(state, 'separator', `=== Minute ${state.minute} ===`);
   logDev(state, 'debug', `${state.player.name} Tactics — EO: ${playerTactics.EO} | NA: ${playerTactics.NA} | EN: ${playerTactics.EN}`);
   logDev(state, 'debug', `${state.creature.name} Tactics — EO: ${creatureTactics.EO} | NA: ${creatureTactics.NA} | EN: ${creatureTactics.EN}`);
 
@@ -1098,15 +1084,25 @@ export function mainLoop(state, config, rng) {
   state = phaseVivacite(state, rng);
 
   // ─── Boucle principale ──────────────────────────────────────────────────────
-  state.tempo = 1;
+  let iteration = 0;
 
   while (true) {
-    // Reset per-tempo flags
+    iteration++;
+
+    // Sécurité anti-boucle infinie
+    if (iteration > config.maxIterations) {
+      state.result = { winner: 'draw', hpPlayer: state.player.hp, hpCreature: state.creature.hp };
+      log(state, 'draw', `Match nul — combat trop long`);
+      flushLogs(state);
+      return state;
+    }
+
+    // Reset per-iteration flags
     state.attackResult = null;
     state.defenseResult = null;
     state.initiativeResult = null;
     state.riposteResult = null;
-    state.skipToNextTempo = false;
+    state.skipToVivacite = false;
 
     // ─── Phase Positionnement ─────────────────────────────────────────────
     state = phasePositionnement(state);
@@ -1117,7 +1113,7 @@ export function mainLoop(state, config, rng) {
       state = phaseAttaque(state, rng);
 
       // Si skip (endurance insuffisante), goto Phase de vivacité
-      if (state.skipToNextTempo) {
+      if (state.skipToVivacite) {
         break;
       }
 
@@ -1153,75 +1149,24 @@ export function mainLoop(state, config, rng) {
 
     // ─── Phase fin de boucle ──────────────────────────────────────────────
 
-    // Si goto Phase de vivacité (endurance insuffisante)
-    if (state.skipToNextTempo) {
-      state.skipToNextTempo = false;
-      state = phaseVivacite(state, rng);
-      continue;
+    // TestEndurance(ATT) et TestEndurance(DEF)
+    const attKey = state.attacker;
+    const defKey = attKey === 'player' ? 'creature' : 'player';
+    testEndurance(state[attKey], state, rng);
+    testEndurance(state[defKey], state, rng);
+
+    flushLogs(state);
+
+    // Recalculer les compétences effectives (le naCap peut avoir changé)
+    recalcEffective();
+
+    // Reset du flag skipToVivacite
+    if (state.skipToVivacite) {
+      state.skipToVivacite = false;
     }
 
-    // si TEMPO >= NBTEMPOPARMMINUTE
-    if (state.tempo >= config.nbTempoParMinute) {
-      // TEMPO = TEMPO - NBTEMPOPARMMINUTE
-      state.tempo = state.tempo - config.nbTempoParMinute;
-      // NUMMINUTE = NUMMINUTE + 1
-      state.minute = state.minute + 1;
-
-      // Vérification match nul
-      if (state.minute > config.maxMinutes) {
-        state.result = { winner: 'draw', hpPlayer: state.player.hp, hpCreature: state.creature.hp };
-        log(state, 'draw', `Match nul — temps écoulé (${config.maxMinutes} minutes)`);
-        flushLogs(state);
-        return state;
-      }
-
-      // TestEndurance(ATT)
-      // TestEndurance(DEF)
-      const attKey = state.attacker;
-      const defKey = attKey === 'player' ? 'creature' : 'player';
-      testEndurance(state[attKey], state, rng);
-      testEndurance(state[defKey], state, rng);
-
-      flushLogs(state);
-
-      // goto Phase début minute
-      playerTacticIndex = Math.min(state.minute - 1, state.player.tactics.length - 1);
-      creatureTacticIndex = Math.min(state.minute - 1, state.creature.tactics.length - 1);
-      playerTactics = state.player.tactics[playerTacticIndex];
-      creatureTactics = state.creature.tactics[creatureTacticIndex];
-
-      playerEffNA = Math.min(playerTactics.NA, state.player.naCap);
-      creatureEffNA = Math.min(creatureTactics.NA, state.creature.naCap);
-
-      state.player.effective = computeEffectiveSkills(
-        state.player.percentages,
-        { EO: playerTactics.EO, NA: playerEffNA, EN: playerTactics.EN },
-        state.distance, state.player.weapon.dist, config
-      );
-      state.creature.effective = computeEffectiveSkills(
-        state.creature.percentages,
-        { EO: creatureTactics.EO, NA: creatureEffNA, EN: creatureTactics.EN },
-        state.distance, state.creature.weapon.dist, config
-      );
-
-      log(state, 'separator', `=== Minute ${state.minute} ===`);
-      logDev(state, 'debug', `${state.player.name} Tactics — EO: ${playerTactics.EO} | NA: ${playerTactics.NA} | EN: ${playerTactics.EN}`);
-      logDev(state, 'debug', `${state.creature.name} Tactics — EO: ${creatureTactics.EO} | NA: ${creatureTactics.NA} | EN: ${creatureTactics.EN}`);
-
-      state = phaseVivacite(state, rng);
-    } else {
-      // TestEndurance(ATT)
-      // TestEndurance(DEF)
-      const attKey = state.attacker;
-      const defKey = attKey === 'player' ? 'creature' : 'player';
-      testEndurance(state[attKey], state, rng);
-      testEndurance(state[defKey], state, rng);
-
-      flushLogs(state);
-
-      // goto Phase de vivacité
-      state = phaseVivacite(state, rng);
-    }
+    // Phase de vivacité
+    state = phaseVivacite(state, rng);
   }
 }
 

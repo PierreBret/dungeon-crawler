@@ -23,7 +23,7 @@ export function WeaponDamage(WEAPON) {
   if (!WEAPON) return 0;
   const NBRTIERS = WEAPON.models.length;
   if (NBRTIERS < 2) throw new Error(`WeaponDamage: l'arme doit avoir au moins 2 modèles (reçu: ${NBRTIERS})`);
-  const MODMATERIEL = 1 + (WEAPON.materiau - 1) * 0.150;
+  const MODMATERIEL = 1 + (WEAPON.materiau - 1) * 0.25;
   const DAMAGE = (WEAPON.damFirst + (WEAPON.tier - 1) * (WEAPON.damLast - WEAPON.damFirst) / (NBRTIERS - 1)) * MODMATERIEL;
   return Math.floor(DAMAGE);
 }
