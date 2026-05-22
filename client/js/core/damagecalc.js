@@ -54,12 +54,13 @@ export function getDamageTypeLabel(damageType) {
  */
 export function getAffinityLabel(key) {
   const labels = {
-    aff_bestial:     "Bestial",
-    aff_elementaire: "Élémentaire",
-    aff_feerique:    "Féérique",
-    aff_demoniaque:  "Démoniaque",
-    aff_undead:      "Mort-vivant",
-    aff_reptilien:   "Reptilien"
+    aff_bestial:      "Bestial",
+    aff_elementaire:  "Élémentaire",
+    aff_gigante:      "Gigante",
+    aff_theriomorphe: "Thériomorphe",
+    aff_reptilien:    "Reptilien",
+    aff_eidolon:      "Eidolon",
+    aff_primordial:   "Primordial"
   };
   const label = labels[key];
   if (!label) console.error(`getAffinityLabel: clé inconnue "${key}"`);
@@ -70,8 +71,9 @@ export function getAffinityLabel(key) {
 export const AFFINITY_KEYS = [
   "aff_bestial",
   "aff_elementaire",
-  "aff_feerique",
-  "aff_demoniaque",
-  "aff_undead",
-  "aff_reptilien"
+  "aff_gigante",
+  "aff_theriomorphe",
+  "aff_reptilien",
+  "aff_eidolon",
+  "aff_primordial"
 ];

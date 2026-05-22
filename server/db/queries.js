@@ -111,10 +111,10 @@ export function addItem(runId, item) {
   return db.prepare(`
     INSERT INTO inventory
       (runId, itemType, itemCode, slot, tier, material,
-       aff_bestial, aff_elementaire, aff_feerique,
-       aff_demoniaque, aff_undead, aff_reptilien,
+       aff_bestial, aff_elementaire, aff_gigante,
+       aff_theriomorphe, aff_reptilien, aff_eidolon, aff_primordial,
        equipped, equippedSlot)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     runId,
     item.itemType,
@@ -124,10 +124,11 @@ export function addItem(runId, item) {
     item.material        ?? 0,
     item.affinities?.bestial      ?? 0,
     item.affinities?.elementaire  ?? 0,
-    item.affinities?.feerique     ?? 0,
-    item.affinities?.demoniaque   ?? 0,
-    item.affinities?.undead       ?? 0,
+    item.affinities?.gigante      ?? 0,
+    item.affinities?.theriomorphe ?? 0,
     item.affinities?.reptilien    ?? 0,
+    item.affinities?.eidolon      ?? 0,
+    item.affinities?.primordial   ?? 0,
     item.equipped        ?? 0,
     item.equippedSlot    ?? null
   ).lastInsertRowid;
@@ -163,43 +164,18 @@ export function removeItem(itemId) {
 export function updateItemAffinities(itemId, affinities) {
   db.prepare(`
     UPDATE inventory
-    SET aff_bestial = ?, aff_elementaire = ?, aff_feerique = ?,
-        aff_demoniaque = ?, aff_undead = ?, aff_reptilien = ?
+    SET aff_bestial = ?, aff_elementaire = ?, aff_gigante = ?,
+        aff_theriomorphe = ?, aff_reptilien = ?, aff_eidolon = ?, aff_primordial = ?
     WHERE id = ?
   `).run(
     affinities.bestial,
     affinities.elementaire,
-    affinities.feerique,
-    affinities.demoniaque,
-    affinities.undead,
+    affinities.gigante,
+    affinities.theriomorphe,
     affinities.reptilien,
+    affinities.eidolon,
+    affinities.primordial,
     itemId
   );
 }
 
-// ─── Floors ───────────────────────────────────────────────────────────────────
-
-export function saveFloor(runId, etage, dungeon) {
-  const existing = db.prepare("SELECT id FROM floors WHERE runId = ? AND etage = ?")
-    .get(runId, etage);
-
-  if (existing) {
-    db.prepare("UPDATE floors SET dungeon = ? WHERE id = ?")
-      .run(JSON.stringify(dungeon), existing.id);
-  } else {
-    db.prepare("INSERT INTO floors (runId, etage, dungeon) VALUES (?, ?, ?)")
-      .run(runId, etage, JSON.stringify(dungeon));
-  }
-}
-
-export function getFloor(runId, etage) {
-  const row = db.prepare("SELECT * FROM floors WHERE runId = ? AND etage = ?")
-    .get(runId, etage);
-  if (!row) return null;
-  return { ...row, dungeon: JSON.parse(row.dungeon) };
-}
-
-export function setFloorCleared(runId, etage) {
-  db.prepare("UPDATE floors SET cleared = 1 WHERE runId = ? AND etage = ?")
-    .run(runId, etage);
-}

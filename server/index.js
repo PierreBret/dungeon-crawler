@@ -30,7 +30,6 @@ import {
   unequipSlot               as dbUnequipSlot,
   removeItem                as dbRemoveItem,
   updateItemAffinities      as dbUpdateItemAffinities,
-  saveFloor                 as dbSaveFloor,
   updateRunStatut           as dbUpdateRunStatut,
   incrementStat             as dbIncrementStat,
   updateCharacterHpEndurance as dbUpdateCharacterHpEndurance
@@ -112,7 +111,7 @@ io.on("connection", (socket) => {
           dbAddItem(runId, {
             itemType: "weapon", itemCode: weapon.code,
             tier: 1, material: 0,
-            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+            affinities: { bestial: 0, elementaire: 0, gigante: 0, theriomorphe: 0, reptilien: 0, eidolon: 0, primordial: 0 },
             equipped: 0, equippedSlot: null
           });
         }
@@ -121,7 +120,7 @@ io.on("connection", (socket) => {
           dbAddItem(runId, {
             itemType: "armor", slot,
             tier: 1, material: 0,
-            affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+            affinities: { bestial: 0, elementaire: 0, gigante: 0, theriomorphe: 0, reptilien: 0, eidolon: 0, primordial: 0 },
             equipped: 0, equippedSlot: null
           });
         }
@@ -129,12 +128,11 @@ io.on("connection", (socket) => {
         dbAddItem(runId, {
           itemType: "weapon", itemCode: "SH",
           tier: 1, material: 0,
-          affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+          affinities: { bestial: 0, elementaire: 0, gigante: 0, theriomorphe: 0, reptilien: 0, eidolon: 0, primordial: 0 },
           equipped: 0, equippedSlot: null
         });
       }
 
-      dbSaveFloor(runId, 1, state.dungeon);
       session.playerId = playerId;
       session.runId    = runId;
       session.etage    = 1;
@@ -248,7 +246,7 @@ io.on("connection", (socket) => {
         slot:        preview.result.slot ?? null,
         tier:        preview.result.tier,
         material:    preview.result.material ?? 0,
-        affinities:  preview.result.affinities ?? { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 },
+        affinities:  preview.result.affinities ?? { bestial: 0, elementaire: 0, gigante: 0, theriomorphe: 0, reptilien: 0, eidolon: 0, primordial: 0 },
         equipped:    0,
         equippedSlot: null
       };
@@ -272,11 +270,6 @@ io.on("connection", (socket) => {
     }
 
     const state = session.getPublicState();
-    try {
-      if (session.runId) dbSaveFloor(session.runId, session.etage ?? 1, state.dungeon);
-    } catch (err) {
-      console.error("[player:action] Erreur DB :", err.message);
-    }
 
     // Combat automatique déclenché par une créature qui atteint le joueur
     if (result.creatureCombat !== undefined) {
@@ -338,15 +331,8 @@ io.on("connection", (socket) => {
 
     treasure.looted = true;
 
-    const etage = session.etage ?? 1;
     const drop = generateDrop(dropTable);
     dbAddItem(session.runId, { ...drop, equipped: 0, equippedSlot: null });
-
-    try {
-      dbSaveFloor(session.runId, etage, session.dungeon);
-    } catch (err) {
-      console.error("[treasure:loot] Erreur DB :", err.message);
-    }
 
     callback({ ok: true, drop });
   });
@@ -361,12 +347,6 @@ io.on("connection", (socket) => {
     session.turn = 0;
 
     const state = session.getPublicState();
-
-    try {
-      dbSaveFloor(session.runId, session.etage, state.dungeon);
-    } catch (err) {
-      console.error("[dungeon:next] Erreur DB :", err.message);
-    }
 
     callback({ ok: true, state });
   });
@@ -501,20 +481,20 @@ io.on("connection", (socket) => {
       let drop = null;
       if (result.winner === "player") {
         creature.defeated = true;
-        dbSaveFloor(session.runId, session.etage ?? 1, session.dungeon);
 
         // ─── Mise à jour affinité de l'arme ─────────────────────────────────
         if (equippedItem && creatureDef.family) {
-          const AFFINITY_TYPES = ["bestial", "elementaire", "feerique", "demoniaque", "undead", "reptilien"];
+          const AFFINITY_TYPES = ["bestial", "elementaire", "gigante", "theriomorphe", "reptilien", "eidolon", "primordial"];
           const familyIndex = AFFINITY_TYPES.indexOf(creatureDef.family);
           if (familyIndex !== -1) {
             const affinities = {
               bestial:      equippedItem.aff_bestial      ?? 0,
               elementaire:  equippedItem.aff_elementaire  ?? 0,
-              feerique:     equippedItem.aff_feerique     ?? 0,
-              demoniaque:   equippedItem.aff_demoniaque   ?? 0,
-              undead:       equippedItem.aff_undead       ?? 0,
-              reptilien:    equippedItem.aff_reptilien    ?? 0
+              gigante:      equippedItem.aff_gigante      ?? 0,
+              theriomorphe: equippedItem.aff_theriomorphe ?? 0,
+              reptilien:    equippedItem.aff_reptilien    ?? 0,
+              eidolon:      equippedItem.aff_eidolon      ?? 0,
+              primordial:   equippedItem.aff_primordial   ?? 0
             };
             // +2 pour le type battu
             affinities[AFFINITY_TYPES[familyIndex]] += 2;

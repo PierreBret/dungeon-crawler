@@ -70,25 +70,32 @@ export function initSchema() {
       material         INTEGER NOT NULL DEFAULT 0,  -- index matériau (0=Bois...7=Acier damascène)
       aff_bestial      INTEGER NOT NULL DEFAULT 0,
       aff_elementaire  INTEGER NOT NULL DEFAULT 0,
-      aff_feerique     INTEGER NOT NULL DEFAULT 0,
-      aff_demoniaque   INTEGER NOT NULL DEFAULT 0,
-      aff_undead       INTEGER NOT NULL DEFAULT 0,
+      aff_gigante      INTEGER NOT NULL DEFAULT 0,
+      aff_theriomorphe INTEGER NOT NULL DEFAULT 0,
       aff_reptilien    INTEGER NOT NULL DEFAULT 0,
+      aff_eidolon      INTEGER NOT NULL DEFAULT 0,
+      aff_primordial   INTEGER NOT NULL DEFAULT 0,
       equipped         INTEGER NOT NULL DEFAULT 0,  -- 0=non, 1=oui
       equippedSlot     TEXT                          -- rightHand | leftHand | corps | tete | bras | jambes
     )
   `);
 
-  // Étages visités du run
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS floors (
-      id        INTEGER PRIMARY KEY AUTOINCREMENT,
-      runId     INTEGER NOT NULL REFERENCES runs(id),
-      etage     INTEGER NOT NULL,
-      dungeon   TEXT    NOT NULL,  -- JSON {grid, creatures, forge, training, exit}
-      cleared   INTEGER NOT NULL DEFAULT 0  -- 0=non, 1=oui
-    )
-  `);
-
   console.log("[DB] Schema initialisé");
+
+  // ─── Migrations : ajout des nouvelles colonnes d'affinité (7 familles) ──────
+  // Les anciennes colonnes (aff_feerique, aff_demoniaque, aff_undead) restent
+  // dans les BDD existantes mais ne sont plus utilisées.
+  const newAffinityColumns = [
+    "aff_gigante",
+    "aff_theriomorphe",
+    "aff_eidolon",
+    "aff_primordial"
+  ];
+  for (const col of newAffinityColumns) {
+    try {
+      db.exec(`ALTER TABLE inventory ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
+    } catch (e) {
+      // Colonne existe déjà — ignoré
+    }
+  }
 }

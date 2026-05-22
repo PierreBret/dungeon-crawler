@@ -107,12 +107,13 @@ function computeMaterial(matA, matB) {
 
 function computeAffinities(affA, affB) {
   return {
-    bestial:     Math.floor(((affA.bestial ?? 0) + (affB.bestial ?? 0)) / 2),
-    elementaire: Math.floor(((affA.elementaire ?? 0) + (affB.elementaire ?? 0)) / 2),
-    feerique:    Math.floor(((affA.feerique ?? 0) + (affB.feerique ?? 0)) / 2),
-    demoniaque:  Math.floor(((affA.demoniaque ?? 0) + (affB.demoniaque ?? 0)) / 2),
-    undead:      Math.floor(((affA.undead ?? 0) + (affB.undead ?? 0)) / 2),
-    reptilien:   Math.floor(((affA.reptilien ?? 0) + (affB.reptilien ?? 0)) / 2),
+    bestial:      Math.floor(((affA.bestial ?? 0) + (affB.bestial ?? 0)) / 2),
+    elementaire:  Math.floor(((affA.elementaire ?? 0) + (affB.elementaire ?? 0)) / 2),
+    gigante:      Math.floor(((affA.gigante ?? 0) + (affB.gigante ?? 0)) / 2),
+    theriomorphe: Math.floor(((affA.theriomorphe ?? 0) + (affB.theriomorphe ?? 0)) / 2),
+    reptilien:    Math.floor(((affA.reptilien ?? 0) + (affB.reptilien ?? 0)) / 2),
+    eidolon:      Math.floor(((affA.eidolon ?? 0) + (affB.eidolon ?? 0)) / 2),
+    primordial:   Math.floor(((affA.primordial ?? 0) + (affB.primordial ?? 0)) / 2),
   };
 }
 
@@ -156,20 +157,22 @@ function computeWeaponFusion(itemA, itemB) {
   const materialResult = computeMaterial(matA, matB);
 
   const affA = {
-    bestial:     itemA.aff_bestial ?? 0,
-    elementaire: itemA.aff_elementaire ?? 0,
-    feerique:    itemA.aff_feerique ?? 0,
-    demoniaque:  itemA.aff_demoniaque ?? 0,
-    undead:      itemA.aff_undead ?? 0,
-    reptilien:   itemA.aff_reptilien ?? 0,
+    bestial:      itemA.aff_bestial ?? 0,
+    elementaire:  itemA.aff_elementaire ?? 0,
+    gigante:      itemA.aff_gigante ?? 0,
+    theriomorphe: itemA.aff_theriomorphe ?? 0,
+    reptilien:    itemA.aff_reptilien ?? 0,
+    eidolon:      itemA.aff_eidolon ?? 0,
+    primordial:   itemA.aff_primordial ?? 0,
   };
   const affB = {
-    bestial:     itemB.aff_bestial ?? 0,
-    elementaire: itemB.aff_elementaire ?? 0,
-    feerique:    itemB.aff_feerique ?? 0,
-    demoniaque:  itemB.aff_demoniaque ?? 0,
-    undead:      itemB.aff_undead ?? 0,
-    reptilien:   itemB.aff_reptilien ?? 0,
+    bestial:      itemB.aff_bestial ?? 0,
+    elementaire:  itemB.aff_elementaire ?? 0,
+    gigante:      itemB.aff_gigante ?? 0,
+    theriomorphe: itemB.aff_theriomorphe ?? 0,
+    reptilien:    itemB.aff_reptilien ?? 0,
+    eidolon:      itemB.aff_eidolon ?? 0,
+    primordial:   itemB.aff_primordial ?? 0,
   };
   const affinitiesResult = computeAffinities(affA, affB);
 

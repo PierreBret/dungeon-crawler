@@ -108,7 +108,7 @@ de chaque route serveur. Transformer les bugs silencieux en erreurs explicites.
 
 ## Structure du donjon
 
-- 100 étages
+- 84 étages
 - 5 créatures par étage (sélection aléatoire parmi le bestiaire éligible pour le niveau)
 - 1 forge par étage (utilisable à volonté)
 - 1 terrain d'entraînement par étage (usage unique, sauf en DEV_MODE)
@@ -119,8 +119,8 @@ de chaque route serveur. Transformer les bugs silencieux en erreurs explicites.
 - Les créatures tuées le sont définitivement
 - Les créatures sont mobiles (IA avec vision en ligne droite, poursuite, déplacement aléatoire)
 - Les créatures peuvent initier le combat en atteignant le joueur
-- Les étages déjà traversés sont persistants dans le run (sauvegardés en BDD)
-- Chaque étage est généré procéduralement à sa première découverte (labyrinthe DFS + passages supplémentaires)
+- Les étages ne sont pas persistants — passer à l'étage suivant génère un nouveau donjon, revenir en arrière n'est pas possible
+- Chaque étage est généré procéduralement (labyrinthe DFS + passages supplémentaires)
 - La mort est définitive (roguelite)
 - Pas de marchand en v1
 
@@ -128,34 +128,6 @@ de chaque route serveur. Transformer les bugs silencieux en erreurs explicites.
 - Grille : 21 lignes × 31 colonnes (impairs)
 - Passages supplémentaires : 30% (extraPaths)
 - Anti grandes salles : aucun rectangle 3×3, 4×2 ou 2×4 ouvert
-
-**Répartition des tiers par zone :**
-
-| Étages | Tiers dominants |
-|---|---|
-| 1-10 | Tier 1 majoritaire |
-| 11-20 | Tier 2 dominant |
-| 21-35 | Tiers 2-3 |
-| 36-50 | Tier 3 dominant |
-| 51-65 | Tiers 3-4 |
-| 66-80 | Tier 4 dominant |
-| 81-95 | Tiers 4-5 |
-| 96-100 | Tiers 5-6, endgame brutal |
-
-**Gardiens (non implémentés — prévus) :**
-
-| Étage | Tier gardien |
-|---|---|
-| 10 | Tier 2 |
-| 20 | Tier 3 |
-| 30 | Tier 3 élite |
-| 40 | Tier 4 |
-| 50 | Tier 4 élite |
-| 60 | Tier 5 |
-| 70 | Tier 5 élite |
-| 80 | Tier 6 |
-| 90 | Tier 6 élite |
-| 100 | Tier 7 (boss final) |
 
 ---
 
@@ -178,10 +150,12 @@ Si une créature atteint la case du joueur → combat automatique (pas de confir
 
 ## Progression méta (roguelite) — non implémentée
 
+
+
 ### Prime de départ (prévue)
 
 ```
-targetTotal = 70 + Math.floor(niveauMaxFranchi / 100 * 28)
+targetTotal = 70 + Math.floor(niveauMaxFranchiDernierRun / 3)
 ```
 
 ### Génération des candidats (implémentée)
@@ -542,15 +516,19 @@ affinitéRésultante = Math.floor((affinitéA + affinitéB) / 2)
 
 ## Familles d'ennemis et affinités
 
-### Les 6 familles
+### Les 7 familles
 
 ```
-Bestial, Élémentaire, Féérique, Démoniaque, Undead, Reptilien
+Bestial, Élémentaire, Gigante, Thériomorphe, Reptilien, Eidolon, Primordial
 ```
 
 ### Système d'affinité
 
 Vaincre un ennemi → **+2** sur sa famille, **-1** sur les 2 familles suivantes (circulaire).
+
+**Ordre circulaire :** Bestial → Élémentaire → Gigante → Thériomorphe → Reptilien → Eidolon → Primordial → (retour à Bestial)
+
+**Exemple :** Battre un Eidolon → +2 Eidolon, -1 Primordial, -1 Bestial.
 
 **Affinité max : 100** (utilisée dans la formule de dégâts : modAffinité = affinité / 100)
 
@@ -661,7 +639,6 @@ players       — id, name, niveauMaxFranchi, createdAt
 runs          — id, playerId, etageActuel, statut (actif|mort|victoire), createdAt
 characters    — id, runId, 7 stats, hp, endurance, augmentations (JSON), 7 stats_base
 inventory     — id, runId, itemType, itemCode, slot, tier, material, 6 affinités, equipped, equippedSlot
-floors        — id, runId, etage, dungeon (JSON), cleared
 ```
 
 ### Structure client
@@ -775,7 +752,7 @@ server/
 | Scan de créature (touche E, malus si non scanné) | ✅ |
 | Présentation narrative (matrices 5×5) | ✅ |
 | Brouillard de guerre + minimap | ✅ |
-| Persistance BDD (SQLite, floors, inventory, characters) | ✅ |
+| Persistance BDD (SQLite, inventory, characters) | ✅ |
 | Tests combat (27 fichiers, Vitest + fast-check) | ✅ |
 
 ### Non implémenté / Prévu 🔲
@@ -783,7 +760,6 @@ server/
 | Système | Notes |
 |---|---|
 | Repos (récupération HP) | Placeholder dans le menu camp |
-| Tactique multi-minutes (5 EO/NA/EN différents) | Spec décrit 5 minutes, implémentation actuelle = tactique unique |
 | Momentum | Placeholder fixé à 0 |
 | Combat à deux armes (main gauche offensive) | Données existent, combat utilise main droite uniquement |
 | Mécanique de blocage bouclier | Données existent, pas de résolution spécifique |

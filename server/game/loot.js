@@ -104,7 +104,7 @@ export function generateDrop(dropTable) {
     itemCode:   selected.code,
     tier:       tier,
     material:   material,
-    affinities: { bestial: 0, elementaire: 0, feerique: 0, demoniaque: 0, undead: 0, reptilien: 0 }
+    affinities: { bestial: 0, elementaire: 0, gigante: 0, theriomorphe: 0, reptilien: 0, eidolon: 0, primordial: 0 }
   };
 
   // Ajout du slot pour les armures

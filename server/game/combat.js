@@ -647,9 +647,9 @@ export function WeaponModStats(WEAPON, COMBATTANT) {
 
 /**
  * WeaponModAff — retourne le modificateur d'affinité de l'arme contre le type de l'ennemi.
- * COMBATTANT.type : bestial | elementaire | feerique | demoniaque | undead | reptilien
+ * COMBATTANT.type : bestial | elementaire | gigante | theriomorphe | reptilien | eidolon | primordial
  *
- * @param {object} WEAPON - {aff_bestial, aff_elementaire, aff_feerique, aff_demoniaque, aff_undead, aff_reptilien}
+ * @param {object} WEAPON - {aff_bestial, aff_elementaire, aff_gigante, aff_theriomorphe, aff_reptilien, aff_eidolon, aff_primordial}
  * @param {object} COMBATTANT - {type}
  * @returns {number} Modificateur d'affinité
  */
@@ -657,10 +657,11 @@ export function WeaponModAff(WEAPON, COMBATTANT) {
   let AFFINITY = 0;
   if (COMBATTANT.type == "bestial")      AFFINITY = WEAPON.aff_bestial;
   if (COMBATTANT.type == "elementaire")  AFFINITY = WEAPON.aff_elementaire;
-  if (COMBATTANT.type == "feerique")     AFFINITY = WEAPON.aff_feerique;
-  if (COMBATTANT.type == "demoniaque")   AFFINITY = WEAPON.aff_demoniaque;
-  if (COMBATTANT.type == "undead")       AFFINITY = WEAPON.aff_undead;
+  if (COMBATTANT.type == "gigante")      AFFINITY = WEAPON.aff_gigante;
+  if (COMBATTANT.type == "theriomorphe") AFFINITY = WEAPON.aff_theriomorphe;
   if (COMBATTANT.type == "reptilien")    AFFINITY = WEAPON.aff_reptilien;
+  if (COMBATTANT.type == "eidolon")      AFFINITY = WEAPON.aff_eidolon;
+  if (COMBATTANT.type == "primordial")   AFFINITY = WEAPON.aff_primordial;
   return Math.round((AFFINITY / 100 + 1) * 100) / 100;
 }
 
@@ -1233,14 +1234,14 @@ function normalizeTactics(tactic) {
  * - tier : indice entre 1 et Longueur(models)
  * - materiau : indice entre 1 et 8
  * - models, damFirst, damLast, weightFO, weightTA, weightIN, weightVI, weightAD
- * - aff_bestial, aff_elementaire, aff_feerique, aff_demoniaque, aff_undead, aff_reptilien
+ * - aff_bestial, aff_elementaire, aff_gigante, aff_theriomorphe, aff_reptilien, aff_eidolon, aff_primordial
  */
 function normalizeWeapon(weaponDef, weaponItem) {
   if (!weaponDef) return {
     poids: 0, dist: 1, tier: 1, materiau: 1,
     models: ["Mains nues", "Mains nues"], damFirst: 3, damLast: 8,
     weightFO: 1, weightTA: 0, weightIN: 0, weightVI: 0, weightAD: 0,
-    aff_bestial: 0, aff_elementaire: 0, aff_feerique: 0, aff_demoniaque: 0, aff_undead: 0, aff_reptilien: 0
+    aff_bestial: 0, aff_elementaire: 0, aff_gigante: 0, aff_theriomorphe: 0, aff_reptilien: 0, aff_eidolon: 0, aff_primordial: 0
   };
 
   const tier = weaponItem?.tier ?? 1;
@@ -1262,10 +1263,11 @@ function normalizeWeapon(weaponDef, weaponItem) {
     weightAD: weaponDef.weightAD ?? 0,
     aff_bestial: affinities.bestial ?? 0,
     aff_elementaire: affinities.elementaire ?? 0,
-    aff_feerique: affinities.feerique ?? 0,
-    aff_demoniaque: affinities.demoniaque ?? 0,
-    aff_undead: affinities.undead ?? 0,
-    aff_reptilien: affinities.reptilien ?? 0
+    aff_gigante: affinities.gigante ?? 0,
+    aff_theriomorphe: affinities.theriomorphe ?? 0,
+    aff_reptilien: affinities.reptilien ?? 0,
+    aff_eidolon: affinities.eidolon ?? 0,
+    aff_primordial: affinities.primordial ?? 0
   };
 }
 

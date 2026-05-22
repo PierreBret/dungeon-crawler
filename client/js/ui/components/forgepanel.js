@@ -483,12 +483,13 @@ export function drawForgeResult(ctx, campState, x, y, width) {
     currentY += lineH;
 
     const AFFINITY_LABELS = {
-      bestial:     "Bestial",
-      elementaire: "Élémentaire",
-      feerique:    "Féérique",
-      demoniaque:  "Démoniaque",
-      undead:      "Undead",
-      reptilien:   "Reptilien"
+      bestial:      "Bestial",
+      elementaire:  "Élémentaire",
+      gigante:      "Gigante",
+      theriomorphe: "Thériomorphe",
+      reptilien:    "Reptilien",
+      eidolon:      "Eidolon",
+      primordial:   "Primordial"
     };
 
     for (const key of Object.keys(AFFINITY_LABELS)) {

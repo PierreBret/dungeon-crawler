@@ -28,10 +28,11 @@ function makeTestCombatantData(overrides = {}) {
       weightAD: 1,
       aff_bestial: 0,
       aff_elementaire: 0,
-      aff_feerique: 0,
-      aff_demoniaque: 0,
-      aff_undead: 0,
-      aff_reptilien: 0
+      aff_gigante: 0,
+      aff_theriomorphe: 0,
+      aff_reptilien: 0,
+      aff_eidolon: 0,
+      aff_primordial: 0
     },
     equipment: {
       armure: { reduction: 2, poids: 4 }
