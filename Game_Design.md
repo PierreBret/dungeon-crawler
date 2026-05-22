@@ -602,15 +602,15 @@ Note : la forge est accessible depuis le donjon (case spéciale) et non depuis l
 
 ### Navigation
 
-Toute case spéciale requiert une confirmation avant d'y entrer :
-- "Êtes-vous sûr de vouloir affronter [nom créature] ?"
-- "Êtes-vous sûr de vouloir aller au terrain d'entraînement ?"
-- "Êtes-vous sûr de vouloir utiliser la forge ?"
-- "Êtes-vous sûr de vouloir ouvrir le trésor ?"
-- "Êtes-vous sûr de vouloir passer à l'étage suivant ?"
+Toutes les cases spéciales (forge, trésor, terrain d'entraînement, sortie) sont traversables librement — le joueur peut marcher dessus sans confirmation ni événement automatique.
 
-En cas de refus, le joueur reste sur sa case adjacente.
-Navigation dialog : ←/→ pour Oui/Non, Entrée pour valider. Non par défaut.
+L'interaction avec une case spéciale se fait uniquement par pression de la touche **Entrée** lorsque le joueur est positionné sur la case :
+- Forge → ouvre l'interface de forge
+- Terrain d'entraînement → ouvre l'interface d'entraînement
+- Trésor → ouvre le coffre (drop)
+- Sortie → affiche un dialog de confirmation "Voulez-vous descendre au niveau suivant ?" (←/→ pour Oui/Non, Non par défaut, Entrée pour valider)
+
+Les créatures restent un cas à part : marcher sur une case occupée par une créature déclenche immédiatement le combat (pas de traversée libre, pas de confirmation).
 
 ---
 
@@ -620,17 +620,21 @@ Navigation dialog : ←/→ pour Oui/Non, Entrée pour valider. Non par défaut.
 
 ```
 server/data/
-├── items.json          — Référentiel unifié (armes, boucliers, armures)
-├── armors.json         — Définitions armures par slot (models, images)
+├── items.json          — Référentiel armes + boucliers (models, images par tier)
+├── armors.json         — Définitions armures par slot (models, images par tier)
 ├── bestiary.json       — Créatures (stats, equipment, tactic, family, levelMin/Max, step)
 └── presentation.json   — Matrices narratives 5×5 pour la présentation de combat
 ```
 
-**items.json** contient tous les types d'items :
+**items.json** contient tous les types d'items (sauf armures) :
 - Armes (codes DA, SH, SA, EP, LO, BS, GS, HA, BA, GA, MA, FL, WH, SS, LS, PA, QS, SC)
-- Boucliers (code SB)
-- Armures (codes BO=corps, HE=tête, AR=bras, LE=jambes)
-- Armes naturelles (natural: true — monstres uniquement)
+- Boucliers (codes SM, ME, LG)
+- Armes naturelles (natural: true — monstres uniquement, images: [])
+
+Chaque entrée possède un tableau `images` aligné 1:1 avec `models` (même index = même tier).
+L'image d'un item au tier T est `images[T - 1]`. Une valeur `null` signifie image non encore assignée.
+
+**armors.json** contient les armures par slot (corps, tête, bras, jambes) avec la même structure `models`/`images` + un champ `imageDir` pour le préfixe de chemin.
 
 ### Données dynamiques (SQLite)
 
@@ -651,7 +655,7 @@ client/js/
 │   ├── input.js            — Gestion clavier (dispatch par écran)
 │   ├── update.js           — Update loop (minimal)
 │   ├── socket.js           — Connexion Socket.io
-│   ├── gamedata.js         — Chargement items/armors/bestiary depuis API
+│   ├── gamedata.js         — Chargement items/armors/bestiary depuis API + helpers (getWeaponImagePath, getArmorImagePath)
 │   ├── constants.js        — SCREENS, CAMP_OPTIONS, LAYOUT, MATERIALS
 │   ├── damagecalc.js       — Formule dégâts (affichage, lecture seule)
 │   ├── equipchecks.js      — Contraintes de maniement
@@ -708,7 +712,8 @@ server/
 |---|---|---|
 | `game:candidates` | C→S | Demande 3 candidats |
 | `game:start` | C→S | Démarrage avec candidat choisi |
-| `player:action` | C→S | Mouvement (move, move:confirm) |
+| `player:action` | C→S | Mouvement (move) |
+| `tile:interact` | C→S | Interagir avec case spéciale sous le joueur (Entrée) |
 | `creature:scan` | C→S | Scanner créature adjacente |
 | `inventory:get` | C→S | Récupérer inventaire |
 | `inventory:equip` | C→S | Équiper un item |
@@ -725,8 +730,8 @@ server/
 
 | Route | Description |
 |---|---|
-| `GET /api/data/items` | Données items (armes, boucliers, armures) |
-| `GET /api/data/armors` | Données armures (models, images par slot) |
+| `GET /api/data/items` | Données items (armes + boucliers, models/images par tier) |
+| `GET /api/data/armors` | Données armures (models, images par slot/tier) |
 | `GET /api/data/bestiary` | Données bestiaire |
 
 ---
@@ -739,7 +744,7 @@ server/
 |---|---|
 | Création de personnage (3 candidats, 3d7, total=70) | ✅ |
 | Donjon procédural (labyrinthe DFS + passages) | ✅ |
-| Navigation (déplacement, confirmation cases spéciales) | ✅ |
+| Navigation (déplacement, interaction Entrée sur cases spéciales) | ✅ |
 | IA créatures (vision, poursuite, aléatoire, combat auto) | ✅ |
 | Inventaire (CRUD complet, BDD) | ✅ |
 | Équipement armes (main droite/gauche, 2 mains, contraintes) | ✅ |

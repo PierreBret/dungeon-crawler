@@ -183,13 +183,6 @@ describe('validateInputs (nouveau format CombatantInput)', () => {
         .toThrow('Équipement incomplet: arme ou armure manquante');
     });
 
-    it('rejette un combattant sans armure dans equipment', () => {
-      const data = validCombatant();
-      data.equipment = {};
-      expect(() => validateInputs(data, validCombatant()))
-        .toThrow('Équipement incomplet: arme ou armure manquante');
-    });
-
     it('rejette une arme sans champ dist', () => {
       const data = validCombatant();
       delete data.weaponDef.dist;

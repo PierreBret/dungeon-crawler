@@ -40,8 +40,9 @@ function handleDungeonInput(state, e) {
     return;
   }
 
-  if (state.dungeon.pendingConfirm) {
-    handleDungeonConfirmInput(state, e);
+  // Dialog de confirmation sortie affiché
+  if (state.dungeon.exitConfirm) {
+    handleExitConfirmInput(state, e);
     return;
   }
 
@@ -52,19 +53,27 @@ function handleDungeonInput(state, e) {
     socket.emit("player:action", { type: "move", direction }, function onMoveResponse(response) {
       if (!response.ok) { console.log(`Déplacement refusé : ${response.error}`); return; }
 
-      if (response.confirm) {
-        state.dungeon.pendingConfirm = { ...response.confirm, choice: 1 };
-        return;
-      }
-
       state.player.position = response.state.player.position;
       if (response.state.dungeon) state.dungeon = response.state.dungeon;
 
-      // Combat automatique déclenché par une créature
+      // Combat déclenché (créature sur la case ou créature qui atteint le joueur)
       if (response.creatureCombat) {
         const ci = response.creatureCombat.creatureIndex;
         const creature = state.dungeon.creatures[ci];
         launchCombatPrep(state, { creature });
+      }
+    });
+  }
+
+  // Touche Entrée — interagir avec la case spéciale sous le joueur
+  if (e.key === "Enter") {
+    socket.emit("tile:interact", {}, function onTileInteract(response) {
+      if (!response.ok) return; // pas de case spéciale, rien à faire
+      if (response.specialType === "training") launchTraining(state);
+      if (response.specialType === "forge")    launchForge(state);
+      if (response.specialType === "treasure") launchTreasure(state);
+      if (response.specialType === "exit") {
+        state.dungeon.exitConfirm = { choice: 1 };
       }
     });
   }
@@ -86,8 +95,8 @@ function handleDungeonInput(state, e) {
   }
 }
 
-function handleDungeonConfirmInput(state, e) {
-  const confirm = state.dungeon.pendingConfirm;
+function handleExitConfirmInput(state, e) {
+  const confirm = state.dungeon.exitConfirm;
   if (!confirm) return;
 
   if (e.key === "ArrowLeft")  { confirm.choice = 0; return; }
@@ -95,38 +104,17 @@ function handleDungeonConfirmInput(state, e) {
 
   if (e.key === "Enter") {
     if (confirm.choice === 0) {
-      const { dx, dy } = confirm.direction;
-      socket.emit("player:action", { type: "move:confirm", dx, dy }, function onConfirmResponse(response) {
-        if (!response.ok) {
-          console.error("Erreur move:confirm :", response.error);
-          state.dungeon.pendingConfirm = null;
-          return;
-        }
-        state.player.position = response.state.player.position;
-        if (response.state.dungeon) state.dungeon = response.state.dungeon;
-        state.dungeon.pendingConfirm = null;
-
-        // Combat automatique déclenché par une créature (prioritaire)
-        if (response.creatureCombat) {
-          const ci = response.creatureCombat.creatureIndex;
-          const creature = state.dungeon.creatures[ci];
-          launchCombatPrep(state, { creature });
-          return;
-        }
-
-        if (response.specialType === "training") launchTraining(state);
-        if (response.specialType === "creature") launchCombatPrep(state, confirm.data);
-        if (response.specialType === "forge")    launchForge(state);
-        if (response.specialType === "treasure") launchTreasure(state);
-        if (response.specialType === "exit")     launchNextFloor(state);
-      });
+      state.dungeon.exitConfirm = null;
+      launchNextFloor(state);
     } else {
-      state.dungeon.pendingConfirm = null;
+      state.dungeon.exitConfirm = null;
     }
     return;
   }
 
-  if (e.key === "Escape") state.dungeon.pendingConfirm = null;
+  if (e.key === "Escape") {
+    state.dungeon.exitConfirm = null;
+  }
 }
 
 // ─── Combat préparation ───────────────────────────────────────────────────────

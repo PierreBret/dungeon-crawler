@@ -14,16 +14,17 @@ function loadJSON(filename) {
   return JSON.parse(readFileSync(join(__dirname, "..", "data", filename), "utf8"));
 }
 
-const items = loadJSON("items.json");
+const items  = loadJSON("items.json");
+const armors = loadJSON("armors.json");
 
-// Mapping slot → code d'item dans items.json
+// Mapping slot → code d'armure dans armors.json
 const slotToCode = { corps: "BO", tete: "HE", bras: "AR", jambes: "LE" };
 
 /**
- * Retourne la définition d'un item par son code.
+ * Retourne la définition d'un item par son code (cherche dans items puis armors).
  */
 function getItemDef(code) {
-  return items.find(i => i.code === code) ?? null;
+  return items.find(i => i.code === code) ?? armors.find(a => a.code === code) ?? null;
 }
 
 // ─── Vérification de compatibilité ───────────────────────────────────────────

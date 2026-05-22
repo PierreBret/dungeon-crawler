@@ -11,7 +11,7 @@ import { readFileSync }  from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createSession, getSession, deleteSession } from "./state/gameState.js";
-import { handlePlayerAction, generateDungeon, findAdjacentCreature } from "./game/world.js";
+import { handlePlayerAction, generateDungeon, findAdjacentCreature, checkSpecialTileAtPlayer } from "./game/world.js";
 import { generateCandidate, rollDie, getStartingPosition } from "./game/player.js";
 import { resolveCombat }      from "./game/combat.js";
 import { computeFusionPreview, areCompatible } from "./game/forge.js";
@@ -67,7 +67,8 @@ const armorCodes = ["BO", "HE", "AR", "LE"];
 const weapons = items.filter(i => !armorCodes.includes(i.code));
 
 // Table de drop pondérée (poids = nombre de tiers par type d'item)
-const dropTable = buildDropTable(items);
+// Pool unique : armes + boucliers (items.json) + armures (armors.json)
+const dropTable = buildDropTable([...items, ...armors]);
 
 app.get("/api/data/items",    (req, res) => res.json(items));
 app.get("/api/data/armors",   (req, res) => res.json(armors));
@@ -129,7 +130,7 @@ io.on("connection", (socket) => {
           itemType: "weapon", itemCode: "SH",
           tier: 1, material: 0,
           affinities: { bestial: 0, elementaire: 0, gigante: 0, theriomorphe: 0, reptilien: 0, eidolon: 0, primordial: 0 },
-          equipped: 0, equippedSlot: null
+          equipped: 1, equippedSlot: "rightHand"
         });
       }
 
@@ -265,13 +266,9 @@ io.on("connection", (socket) => {
     const result = handlePlayerAction(session, action);
     if (!result.ok) return callback({ ok: false, error: result.error });
 
-    if (result.confirm) {
-      return callback({ ok: true, confirm: result.confirm });
-    }
-
     const state = session.getPublicState();
 
-    // Combat automatique déclenché par une créature qui atteint le joueur
+    // Combat déclenché (créature sur la case cible ou créature qui atteint le joueur)
     if (result.creatureCombat !== undefined) {
       const creature = session.dungeon.creatures[result.creatureCombat];
       const creatureDef = bestiary.find(b => b.id === creature.id);
@@ -279,7 +276,6 @@ io.on("connection", (socket) => {
       return callback({
         ok: true,
         state,
-        specialType: result.specialType ?? null,
         creatureCombat: {
           creatureIndex: result.creatureCombat,
           label: `${name} vous attaque !`
@@ -287,7 +283,17 @@ io.on("connection", (socket) => {
       });
     }
 
-    callback({ ok: true, state, specialType: result.specialType ?? null });
+    callback({ ok: true, state });
+  });
+
+  socket.on("tile:interact", (data, callback) => {
+    const session = getSession(socket.id);
+    if (!session) return callback({ ok: false, error: "Session introuvable" });
+
+    const specialType = checkSpecialTileAtPlayer(session);
+    if (!specialType) return callback({ ok: false, error: "Aucune case spéciale" });
+
+    callback({ ok: true, specialType });
   });
 
   socket.on("creature:scan", (data, callback) => {

@@ -19,7 +19,7 @@
 */
 
 import { MATERIALS }  from "../../core/constants.js";
-import { gameData, getArmorName, getShieldName }   from "../../core/gameData.js";
+import { gameData, getArmorName, getShieldName, getWeaponImagePath, getArmorImagePath } from "../../core/gameData.js";
 import { WeaponDamage } from "../../core/damagecalc.js";
 
 // ─── Ratios fixes ─────────────────────────────────────────────────────────────
@@ -182,10 +182,21 @@ function drawForgeFrame(ctx, x, y, w, h, item, label, isActive) {
 }
 
 function drawItemInFrame(ctx, x, y, w, h, item) {
-  if (item.itemType === "weapon") {
-    const weaponDef = gameData.weapons.find(wd => wd.code === item.itemCode);
-    if (weaponDef?.image) {
-      const img = getOrLoadImage(weaponDef.image);
+  if (item.itemType === "weapon" || item.itemType === "shield") {
+    const imagePath = getWeaponImagePath(item.itemCode, item.tier);
+    if (imagePath) {
+      const img = getOrLoadImage(`weapons/${imagePath}`);
+      if (img?.complete && img.naturalWidth > 0) {
+        drawItemImage(ctx, x, y, w, h, img);
+        return;
+      }
+    }
+  }
+
+  if (item.itemType === "armor") {
+    const imagePath = getArmorImagePath(item.slot, item.tier);
+    if (imagePath) {
+      const img = getOrLoadImage(imagePath);
       if (img?.complete && img.naturalWidth > 0) {
         drawItemImage(ctx, x, y, w, h, img);
         return;
@@ -423,11 +434,27 @@ export function drawForgeResult(ctx, campState, x, y, width) {
   // 2 objets compatibles — afficher le résultat
   const result = preview.result;
 
-  // Image de l'arme résultante
-  if (result.itemType === "weapon") {
-    const weaponDef = gameData.weapons.find(w => w.code === result.itemCode);
-    if (weaponDef?.image) {
-      const img = getOrLoadImage(weaponDef.image);
+  // Image de l'arme/bouclier/armure résultant
+  if (result.itemType === "weapon" || result.itemType === "shield") {
+    const imagePath = getWeaponImagePath(result.itemCode, result.tier);
+    if (imagePath) {
+      const img = getOrLoadImage(`weapons/${imagePath}`);
+      if (img?.complete && img.naturalWidth > 0) {
+        const imgSize = Math.min(width - 20, 140);
+        const ratio   = img.naturalWidth / img.naturalHeight;
+        const drawH   = imgSize;
+        const drawW   = Math.min(imgSize * ratio, width - 20);
+        const drawX   = x + (width - drawW) / 2;
+        ctx.drawImage(img, drawX, currentY, drawW, drawH);
+        currentY += drawH + 16;
+      }
+    }
+  }
+
+  if (result.itemType === "armor") {
+    const imagePath = getArmorImagePath(result.slot, result.tier);
+    if (imagePath) {
+      const img = getOrLoadImage(imagePath);
       if (img?.complete && img.naturalWidth > 0) {
         const imgSize = Math.min(width - 20, 140);
         const ratio   = img.naturalWidth / img.naturalHeight;
@@ -510,14 +537,14 @@ export function drawForgeResult(ctx, campState, x, y, width) {
 
 const imageCache = {};
 
-function getOrLoadImage(path) {
-  if (!path) return null;
-  if (!imageCache[path]) {
+function getOrLoadImage(fullPath) {
+  if (!fullPath) return null;
+  if (!imageCache[fullPath]) {
     const img = new Image();
-    img.src   = `/assets/weapons/${path}`;
-    imageCache[path] = img;
+    img.src   = `/assets/${fullPath}`;
+    imageCache[fullPath] = img;
   }
-  return imageCache[path];
+  return imageCache[fullPath];
 }
 
 export function getForgeItems(inventory) {

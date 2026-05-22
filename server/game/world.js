@@ -194,42 +194,6 @@ export function generateDungeon(bestiary, dungeonLevel) {
   return { grid, creatures, forge, training, exit, treasure };
 }
 
-// ─── Détection case spéciale ──────────────────────────────────────────────────
-
-function getSpecialTile(dungeon, x, y, bestiary) {
-  const { creatures, forge, training, exit, treasure } = dungeon;
-
-  const creature = creatures?.find(c => !c.defeated && c.x === x && c.y === y);
-  if (creature) {
-    // Récupérer le nom de la créature pour le message de confirmation
-    const def    = bestiary?.find(b => b.id === creature.id);
-    const name   = def?.nameFr ?? "une créature";
-    return {
-      type:  "creature",
-      label: `Êtes-vous sûr de vouloir affronter ${name} ?`,
-      data:  { creature }
-    };
-  }
-
-  if (forge && forge.x === x && forge.y === y) {
-    return { type: "forge", label: "Êtes-vous sûr de vouloir utiliser la forge ?", data: {} };
-  }
-
-  if (training && training.x === x && training.y === y) {
-    return { type: "training", label: "Êtes-vous sûr de vouloir aller au terrain d'entraînement ?", data: { used: training.used } };
-  }
-
-  if (treasure && !treasure.looted && treasure.x === x && treasure.y === y) {
-    return { type: "treasure", label: "Êtes-vous sûr de vouloir ouvrir le trésor ?", data: {} };
-  }
-
-  if (exit && exit.x === x && exit.y === y) {
-    return { type: "exit", label: "Êtes-vous sûr de vouloir passer à l'étage suivant ?", data: {} };
-  }
-
-  return null;
-}
-
 // ─── Déplacement des créatures ────────────────────────────────────────────────
 
 /**
@@ -470,14 +434,18 @@ function movePlayer(session, dx, dy) {
   if (newX < 0 || newX >= dungeon.grid[0].length) return { ok: false, error: "Hors limites" };
   if (dungeon.grid[newY][newX] !== 0)             return { ok: false, error: "Mur" };
 
-  const special = getSpecialTile(dungeon, newX, newY, session.bestiary);
-  if (special) {
-    return {
-      ok:      true,
-      confirm: { type: special.type, label: special.label, data: special.data, direction: { dx, dy } }
-    };
+  // Créature sur la case cible → combat immédiat (pas de traversée libre)
+  const creatureIdx = dungeon.creatures.findIndex(function findCreatureAtTarget(c) {
+    return !c.defeated && c.x === newX && c.y === newY;
+  });
+  if (creatureIdx !== -1) {
+    player.position.x = newX;
+    player.position.y = newY;
+    session.turn++;
+    return { ok: true, creatureCombat: creatureIdx };
   }
 
+  // Cases spéciales (forge, trésor, entraînement, sortie) — traversée libre
   player.position.x = newX;
   player.position.y = newY;
   session.turn++;
@@ -492,50 +460,6 @@ function movePlayer(session, dx, dy) {
   }
 
   return { ok: true };
-}
-
-function confirmMove(session, dx, dy) {
-  if (!session?.player) throw new Error("confirmMove: session.player manquant");
-
-  const { player, dungeon } = session;
-  const newX = player.position.x + dx;
-  const newY = player.position.y + dy;
-
-  if (newY < 0 || newY >= dungeon.grid.length)    return { ok: false, error: "Hors limites" };
-  if (newX < 0 || newX >= dungeon.grid[0].length) return { ok: false, error: "Hors limites" };
-  if (dungeon.grid[newY][newX] !== 0)             return { ok: false, error: "Mur" };
-
-  // Vérifier si une créature occupe la case cible — combat immédiat, pas de moveCreatures
-  const creatureIdx = dungeon.creatures.findIndex(function findCreatureAtTarget(c) {
-    return !c.defeated && c.x === newX && c.y === newY;
-  });
-
-  if (creatureIdx !== -1) {
-    // Le joueur engage la créature : combat déclenché avant tout mouvement de créatures
-    player.position.x = newX;
-    player.position.y = newY;
-    session.turn++;
-    return { ok: true, specialType: "creature", creatureCombat: creatureIdx };
-  }
-
-  // Pas de créature sur la case — déplacement normal + mouvement des créatures
-  player.position.x = newX;
-  player.position.y = newY;
-  session.turn++;
-
-  // Mise à jour de la vision de toutes les créatures (à chaque pas du joueur)
-  updateCreaturesVision(session);
-
-  // Déplacement des créatures après chaque pas du joueur
-  const creaturesResult = moveCreatures(session);
-
-  const special = getSpecialTile(dungeon, newX, newY, session.bestiary);
-
-  if (creaturesResult.combatTriggered) {
-    return { ok: true, specialType: special?.type ?? null, creatureCombat: creaturesResult.creatureIndex };
-  }
-
-  return { ok: true, specialType: special?.type ?? null };
 }
 
 // ─── Dispatcher ──────────────────────────────────────────────────────────────
@@ -554,12 +478,6 @@ export function handlePlayerAction(session, action) {
       const dir = directions[action.direction];
       if (!dir) return { ok: false, error: "Direction invalide" };
       return movePlayer(session, dir.dx, dir.dy);
-    }
-
-    case "move:confirm": {
-      if (action.dx === undefined) return { ok: false, error: "dx manquant" };
-      if (action.dy === undefined) return { ok: false, error: "dy manquant" };
-      return confirmMove(session, action.dx, action.dy);
     }
 
     default:
@@ -598,4 +516,38 @@ export function findAdjacentCreature(dungeon, playerX, playerY) {
   }
 
   return -1;
+}
+
+
+// ─── Vérification case spéciale sous le joueur ────────────────────────────────
+
+/**
+ * Vérifie si le joueur est actuellement sur une case spéciale (forge, trésor, entraînement, sortie).
+ * Retourne le type de la case spéciale ou null.
+ *
+ * @param {object} session — session du joueur
+ * @returns {string|null} "forge" | "training" | "treasure" | "exit" | null
+ */
+export function checkSpecialTileAtPlayer(session) {
+  if (!session?.player) throw new Error("checkSpecialTileAtPlayer: session.player manquant");
+  if (!session?.dungeon) throw new Error("checkSpecialTileAtPlayer: session.dungeon manquant");
+
+  const { player, dungeon } = session;
+  const x = player.position.x;
+  const y = player.position.y;
+
+  if (dungeon.forge && dungeon.forge.x === x && dungeon.forge.y === y) {
+    return "forge";
+  }
+  if (dungeon.training && dungeon.training.x === x && dungeon.training.y === y) {
+    return "training";
+  }
+  if (dungeon.treasure && !dungeon.treasure.looted && dungeon.treasure.x === x && dungeon.treasure.y === y) {
+    return "treasure";
+  }
+  if (dungeon.exit && dungeon.exit.x === x && dungeon.exit.y === y) {
+    return "exit";
+  }
+
+  return null;
 }

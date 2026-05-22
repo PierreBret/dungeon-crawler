@@ -17,7 +17,7 @@ class GameSession {
     if (!bestiary?.length) throw new Error("GameSession: bestiary manquant");
 
     this.socketId      = socketId;
-    this.bestiary      = bestiary; // référence pour getSpecialTile dans world.js
+    this.bestiary      = bestiary; // référence pour checkSpecialTileAtPlayer et créatures
     this.etage         = 1;
     this.dungeon       = generateDungeon(bestiary, this.etage);
     this.player        = createPlayer(candidate, this.dungeon.grid);

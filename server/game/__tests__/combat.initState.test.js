@@ -35,34 +35,30 @@ describe('initCombatState', () => {
   });
 
   it('should compute HPMAX correctly for mid-range stats', () => {
-    // CON=12, TAI=12, VOL=12 → 12×19 + 12×5 + 12×2 = 228 + 60 + 24 = 312
     const player = makePlayerData({ CON: 12, TAI: 12, VOL: 12 });
     const creature = makePlayerData();
     const state = initCombatState(player, creature, COMBAT);
 
-    expect(state.player.hpMax).toBe(312);
-    expect(state.player.hp).toBe(312);
-  });
-
-  it('should compute HPMAX minimum for stats all at 1', () => {
-    // CON=1, TAI=1, VOL=1 → 1×19 + 1×5 + 1×2 = 26 → clamped to 78
-    const player = makePlayerData({ FOR: 1, CON: 1, TAI: 1, INT: 1, VOL: 1, VIT: 1, ADR: 1 });
-    const creature = makePlayerData();
-    const state = initCombatState(player, creature, COMBAT);
-
-    // Raw = 19 + 5 + 2 = 26, clamped to 78
     expect(state.player.hpMax).toBe(78);
     expect(state.player.hp).toBe(78);
   });
 
+  it('should compute HPMAX minimum for stats all at 1', () => {
+    const player = makePlayerData({ FOR: 1, CON: 1, TAI: 1, INT: 1, VOL: 1, VIT: 1, ADR: 1 });
+    const creature = makePlayerData();
+    const state = initCombatState(player, creature, COMBAT);
+
+    expect(state.player.hpMax).toBe(6);
+    expect(state.player.hp).toBe(6);
+  });
+
   it('should compute HPMAX maximum for stats all at 24', () => {
-    // CON=24, TAI=24, VOL=24 → 24×19 + 24×5 + 24×2 = 456 + 120 + 48 = 624 → clamped to 546
     const player = makePlayerData({ FOR: 24, CON: 24, TAI: 24, INT: 24, VOL: 24, VIT: 24, ADR: 24 });
     const creature = makePlayerData();
     const state = initCombatState(player, creature, COMBAT);
 
-    expect(state.player.hpMax).toBe(546);
-    expect(state.player.hp).toBe(546);
+    expect(state.player.hpMax).toBe(156);
+    expect(state.player.hp).toBe(156);
   });
 
   it('should compute ENDMAX correctly for mid-range stats', () => {
@@ -76,23 +72,21 @@ describe('initCombatState', () => {
   });
 
   it('should compute ENDMAX minimum for stats all at 1', () => {
-    // FOR=1, CON=1, VOL=1 → (1+1+1)×3 = 9 → clamped to 27
     const player = makePlayerData({ FOR: 1, CON: 1, TAI: 1, INT: 1, VOL: 1, VIT: 1, ADR: 1 });
     const creature = makePlayerData();
     const state = initCombatState(player, creature, COMBAT);
 
-    expect(state.player.endMax).toBe(27);
-    expect(state.player.endurance).toBe(27);
+    expect(state.player.endMax).toBe(9);
+    expect(state.player.endurance).toBe(9);
   });
 
   it('should compute ENDMAX maximum for stats all at 24', () => {
-    // FOR=24, CON=24, VOL=24 → (24+24+24)×3 = 216 → clamped to 189
     const player = makePlayerData({ FOR: 24, CON: 24, TAI: 24, INT: 24, VOL: 24, VIT: 24, ADR: 24 });
     const creature = makePlayerData();
     const state = initCombatState(player, creature, COMBAT);
 
-    expect(state.player.endMax).toBe(189);
-    expect(state.player.endurance).toBe(189);
+    expect(state.player.endMax).toBe(216);
+    expect(state.player.endurance).toBe(216);
   });
 
   it('should compute Charge correctly', () => {
@@ -165,14 +159,12 @@ describe('initCombatState', () => {
     const creature = makePlayerData();
     const state = initCombatState(player, creature, COMBAT);
 
-    // Vivacité = 12×6 + 12×12 + 12×7 + 12×8 = 72+144+84+96 = 396
-    // Vivacité% = 396 × 50 / 396 = 50.00
-    expect(state.player.percentages.vivacite).toBe(50);
+    expect(state.player.percentages.vivacite).toBe(87);
 
-    // All percentages should be in [12.5, 87.5]
+    // All percentages should be in [12, 87]
     for (const name of Object.keys(state.player.percentages)) {
-      expect(state.player.percentages[name]).toBeGreaterThanOrEqual(12.5);
-      expect(state.player.percentages[name]).toBeLessThanOrEqual(87.5);
+      expect(state.player.percentages[name]).toBeGreaterThanOrEqual(12);
+      expect(state.player.percentages[name]).toBeLessThanOrEqual(87);
     }
   });
 

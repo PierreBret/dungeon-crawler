@@ -20,7 +20,7 @@
 */
 
 import { MATERIALS }             from "../../core/constants.js";
-import { gameData }              from "../../core/gameData.js";
+import { gameData, getWeaponImagePath } from "../../core/gameData.js";
 import { computeEquipMessages }  from "../../core/equipchecks.js";
 
 // ─── Ratios fixes — proportions préservées quelle que soit la résolution ──────
@@ -200,12 +200,12 @@ function drawHandFrame(ctx, x, y, w, h, item, label, isActive, isBlocked) {
 }
 
 function drawItemInFrame(ctx, x, y, w, h, item) {
-  const weaponDef = getWeaponDef(item);
-  if (!weaponDef?.image) {
+  const imagePath = getWeaponImagePath(item.itemCode, item.tier);
+  if (!imagePath) {
     drawItemPlaceholder(ctx, x, y, w, h, item);
     return;
   }
-  const img = getOrLoadImage(weaponDef.image);
+  const img = getOrLoadImage(imagePath);
   if (img?.complete && img.naturalWidth > 0) {
     drawItemImage(ctx, x, y, w, h, img);
   } else {
@@ -561,11 +561,11 @@ export function getCompatibleItems(inventory, hand) {
   if (hand === "left" && twoHanded) return [];
 
   const items = inventory.filter(function isCompatible(item) {
-    if (item.itemType !== "weapon") return false;
+    if (item.itemType !== "weapon" && item.itemType !== "shield") return false;
     const def = getWeaponDef(item);
     if (!def) return false;
     if (hand === "left") {
-      return (def.damFirst === 0 && def.damLast === 0) || def.hd === 1;
+      return (!def.damFirst && !def.damLast) || def.hd === 1;
     }
     return def.damFirst > 0 || def.damLast > 0;
   });
@@ -616,6 +616,10 @@ function getItemLabel(item) {
     const matName = MATERIALS[item.material]?.name ?? "?";
     return `${weaponName} en ${matName}`;
   }
-  if (item.itemType === "shield") return `Bouclier T${item.tier}`;
+  if (item.itemType === "shield") {
+    const shieldDef  = gameData.weapons.find(w => w.code === item.itemCode);
+    const modelIndex = (item.tier ?? 1) - 1;
+    return shieldDef?.models?.[modelIndex] ?? `Bouclier T${item.tier}`;
+  }
   return item.itemCode;
 }

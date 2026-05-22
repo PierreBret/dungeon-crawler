@@ -169,11 +169,6 @@ export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode,
   ctx.textAlign    = "left";
   ctx.textBaseline = "top";
 
-  // Dialog de confirmation si case spéciale détectée
-  if (dungeon.pendingConfirm) {
-    drawConfirmDialog(ctx, dungeon.pendingConfirm);
-  }
-
   // Notification de trésor récupéré
   if (treasureDrop) {
     drawTreasureDropDialog(ctx, treasureDrop);
@@ -183,17 +178,17 @@ export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode,
   if (scanResult) {
     drawScanPopup(ctx, scanResult);
   }
+
+  // Dialog de confirmation sortie
+  if (dungeon.exitConfirm) {
+    drawExitConfirmDialog(ctx, dungeon.exitConfirm);
+  }
 }
 
-// ─── Dialog de confirmation ───────────────────────────────────────────────────
+// ─── Dialog de confirmation sortie ────────────────────────────────────────────
 
-function drawConfirmDialog(ctx, confirm) {
-  if (!confirm?.label) {
-    console.error("drawConfirmDialog: label manquant");
-    return;
-  }
-
-  const w       = Math.min(500, ctx.canvas.width  * 0.5);
+function drawExitConfirmDialog(ctx, confirm) {
+  const w       = Math.min(500, ctx.canvas.width * 0.5);
   const h       = 110;
   const x       = (ctx.canvas.width  - w) / 2;
   const y       = (ctx.canvas.height - h) / 2;
@@ -212,24 +207,24 @@ function drawConfirmDialog(ctx, confirm) {
   ctx.font         = "14px monospace";
   ctx.textAlign    = "center";
   ctx.textBaseline = "top";
-  ctx.fillText(confirm.label, x + w / 2, y + padding);
+  ctx.fillText("Voulez-vous descendre au niveau suivant ?", x + w / 2, y + padding);
 
   // Boutons
-  const choice = confirm.choice ?? 1; // 0=Oui, 1=Non
+  const choice = confirm.choice ?? 1;
   const btnW   = 80;
   const btnH   = 28;
   const btnY   = y + h - btnH - padding;
   const ouiX   = x + w / 2 - btnW - 12;
   const nonX   = x + w / 2 + 12;
 
-  drawConfirmButton(ctx, "Oui", ouiX, btnY, btnW, btnH, choice === 0);
-  drawConfirmButton(ctx, "Non", nonX, btnY, btnW, btnH, choice === 1);
+  drawExitConfirmButton(ctx, "Oui", ouiX, btnY, btnW, btnH, choice === 0);
+  drawExitConfirmButton(ctx, "Non", nonX, btnY, btnW, btnH, choice === 1);
 
   ctx.textAlign    = "left";
   ctx.textBaseline = "top";
 }
 
-function drawConfirmButton(ctx, label, x, y, w, h, isSelected) {
+function drawExitConfirmButton(ctx, label, x, y, w, h, isSelected) {
   ctx.fillStyle   = isSelected ? "#1a1a00" : "#2a2a2a";
   ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = isSelected ? "#d4a017" : "#555";

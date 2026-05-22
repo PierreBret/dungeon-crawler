@@ -15,6 +15,9 @@ import { rollDie } from "./player.js";
 // ─── Codes des armures (pour distinguer arme/bouclier vs armure) ──────────────
 const ARMOR_CODES = ["BO", "HE", "AR", "LE"];
 
+// ─── Codes des boucliers ──────────────────────────────────────────────────────
+const SHIELD_CODES = ["SM", "ME", "LG"];
+
 // ─── Mapping code armure → slot ───────────────────────────────────────────────
 const ARMOR_SLOT_MAP = {
   BO: "corps",
@@ -49,6 +52,7 @@ export function buildDropTable(items) {
     entries.push({
       code:       item.code,
       isArmor:    ARMOR_CODES.includes(item.code),
+      isShield:   SHIELD_CODES.includes(item.code),
       slot:       ARMOR_SLOT_MAP[item.code] ?? null,
       tierCount:  tierCount,
       weight:     tierCount
@@ -95,12 +99,17 @@ export function generateDrop(dropTable) {
 
   // 3) Tirage du matériau (indépendant du tier)
   //    Pour les armures : matériau = 0 (pas de matériau)
-  //    Pour les armes/boucliers : tirage entre 0 et 1 (à ajuster selon progression future)
-  const material = selected.isArmor ? 0 : rollDie(0, 1);
+  //    Pour les boucliers : matériau = 0 (pas de matériau)
+  //    Pour les armes : tirage entre 0 et 1 (à ajuster selon progression future)
+  const material = (selected.isArmor || selected.isShield) ? 0 : rollDie(0, 1);
 
   // 4) Construction de l'objet drop
+  let itemType = "weapon";
+  if (selected.isArmor)  itemType = "armor";
+  if (selected.isShield) itemType = "shield";
+
   const drop = {
-    itemType:   selected.isArmor ? "armor" : "weapon",
+    itemType:   itemType,
     itemCode:   selected.code,
     tier:       tier,
     material:   material,

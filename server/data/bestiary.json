@@ -5074,7 +5074,7 @@
   {
     "id": "ogre",
     "nameFr": "Ogre",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 8,
     "levelMax": 24,
     "step": 3,
@@ -5122,7 +5122,7 @@
   {
     "id": "troll",
     "nameFr": "Troll",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 10,
     "levelMax": 28,
     "step": 2,
@@ -5172,7 +5172,7 @@
   {
     "id": "lestrigon",
     "nameFr": "Lestrigon",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 12,
     "levelMax": 32,
     "step": 3,
@@ -5220,7 +5220,7 @@
   {
     "id": "automate_bois",
     "nameFr": "Automate de Bois",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 8,
     "levelMax": 24,
     "step": 3,
@@ -5270,7 +5270,7 @@
   {
     "id": "automate_cuivre",
     "nameFr": "Automate de Cuivre",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 10,
     "levelMax": 28,
     "step": 3,
@@ -5320,7 +5320,7 @@
   {
     "id": "automate_etain",
     "nameFr": "Automate d'Étain",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 14,
     "levelMax": 32,
     "step": 3,
@@ -5370,7 +5370,7 @@
   {
     "id": "automate_bronze",
     "nameFr": "Automate de Bronze",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 18,
     "levelMax": 38,
     "step": 3,
@@ -5420,7 +5420,7 @@
   {
     "id": "automate_fer",
     "nameFr": "Automate de Fer",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 24,
     "levelMax": 44,
     "step": 3,
@@ -5470,7 +5470,7 @@
   {
     "id": "automate_fonte",
     "nameFr": "Automate de Fonte",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 30,
     "levelMax": 50,
     "step": 3,
@@ -5520,7 +5520,7 @@
   {
     "id": "automate_acier",
     "nameFr": "Automate d'Acier",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 38,
     "levelMax": 58,
     "step": 3,
@@ -5570,7 +5570,7 @@
   {
     "id": "automate_adamante",
     "nameFr": "Automate d'Adamante",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 48,
     "levelMax": 68,
     "step": 3,
@@ -5620,7 +5620,7 @@
   {
     "id": "arges",
     "nameFr": "Argès",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 12,
     "levelMax": 30,
     "step": 2,
@@ -5668,7 +5668,7 @@
   {
     "id": "brontes",
     "nameFr": "Brontès",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 20,
     "levelMax": 40,
     "step": 2,
@@ -5716,7 +5716,7 @@
   {
     "id": "steropes",
     "nameFr": "Stéropès",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 28,
     "levelMax": 48,
     "step": 2,
@@ -5764,7 +5764,7 @@
   {
     "id": "otus",
     "nameFr": "Otus",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 20,
     "levelMax": 40,
     "step": 3,
@@ -5812,7 +5812,7 @@
   {
     "id": "damasen",
     "nameFr": "Damasen",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 16,
     "levelMax": 36,
     "step": 3,
@@ -5860,7 +5860,7 @@
   {
     "id": "eurytos",
     "nameFr": "Eurytos",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 26,
     "levelMax": 46,
     "step": 2,
@@ -5908,7 +5908,7 @@
   {
     "id": "hippolytos",
     "nameFr": "Hippolytos",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 32,
     "levelMax": 52,
     "step": 2,
@@ -5956,7 +5956,7 @@
   {
     "id": "antee",
     "nameFr": "Antée",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 36,
     "levelMax": 56,
     "step": 2,
@@ -6006,7 +6006,7 @@
   {
     "id": "talos",
     "nameFr": "Talos",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 42,
     "levelMax": 64,
     "step": 3,
@@ -6056,7 +6056,7 @@
   {
     "id": "alcyonee",
     "nameFr": "Alcyonée",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 40,
     "levelMax": 62,
     "step": 2,
@@ -6104,7 +6104,7 @@
   {
     "id": "hecatonchire",
     "nameFr": "Hécatonchire",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 44,
     "levelMax": 64,
     "step": 2,
@@ -6154,7 +6154,7 @@
   {
     "id": "porphyrion",
     "nameFr": "Porphyrion",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 46,
     "levelMax": 66,
     "step": 2,
@@ -6205,7 +6205,7 @@
   {
     "id": "enkelados",
     "nameFr": "Enkelados",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 50,
     "levelMax": 70,
     "step": 3,
@@ -6253,7 +6253,7 @@
   {
     "id": "polybotos",
     "nameFr": "Polybotès",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 54,
     "levelMax": 72,
     "step": 3,
@@ -6301,7 +6301,7 @@
   {
     "id": "mimas",
     "nameFr": "Mimas",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 56,
     "levelMax": 74,
     "step": 2,
@@ -6349,7 +6349,7 @@
   {
     "id": "agrios",
     "nameFr": "Agrios",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 58,
     "levelMax": 76,
     "step": 2,
@@ -6397,7 +6397,7 @@
   {
     "id": "titan",
     "nameFr": "Titan",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 62,
     "levelMax": 80,
     "step": 2,
@@ -6445,7 +6445,7 @@
   {
     "id": "geant_vide",
     "nameFr": "Géant de vide",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 64,
     "levelMax": 82,
     "step": 2,
@@ -6495,7 +6495,7 @@
   {
     "id": "ephialtes",
     "nameFr": "Éphialtès",
-    "family": "gigantes",
+    "family": "gigante",
     "levelMin": 68,
     "levelMax": 84,
     "step": 2,
@@ -6543,7 +6543,7 @@
   {
     "id": "boss_polypheme",
     "nameFr": "Polyphème",
-    "family": "gigantes",
+    "family": "gigante",
     "boss": true,
     "levelMin": 7,
     "levelMax": 28,
@@ -6591,7 +6591,7 @@
   {
     "id": "boss_argos_panoptes",
     "nameFr": "Argos Panoptès",
-    "family": "gigantes",
+    "family": "gigante",
     "boss": true,
     "levelMin": 28,
     "levelMax": 49,
@@ -6642,7 +6642,7 @@
   {
     "id": "boss_hecatonchire_ancien",
     "nameFr": "Hécatonchire ancien",
-    "family": "gigantes",
+    "family": "gigante",
     "boss": true,
     "levelMin": 49,
     "levelMax": 70,
@@ -6692,7 +6692,7 @@
   {
     "id": "boss_cronos",
     "nameFr": "Cronos",
-    "family": "gigantes",
+    "family": "gigante",
     "boss": true,
     "levelMin": 70,
     "levelMax": 84,
@@ -9814,7 +9814,7 @@
   {
     "id": "larve_primordiale",
     "nameFr": "Larve primordiale",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 14,
     "levelMax": 32,
     "step": 2,
@@ -9864,7 +9864,7 @@
   {
     "id": "ombre_erebe",
     "nameFr": "Ombre d'Érèbe",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 12,
     "levelMax": 30,
     "step": 1,
@@ -9911,7 +9911,7 @@
   {
     "id": "enfant_nyx",
     "nameFr": "Enfant de Nyx",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 14,
     "levelMax": 32,
     "step": 1,
@@ -9961,7 +9961,7 @@
   {
     "id": "echo_tartare",
     "nameFr": "Écho de Tartare",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 16,
     "levelMax": 36,
     "step": 2,
@@ -10008,7 +10008,7 @@
   {
     "id": "gardien_enchaine",
     "nameFr": "Gardien enchaîné",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 20,
     "levelMax": 40,
     "step": 3,
@@ -10056,7 +10056,7 @@
   {
     "id": "fragment_ananke",
     "nameFr": "Fragment d'Ananké",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 22,
     "levelMax": 42,
     "step": 2,
@@ -10103,7 +10103,7 @@
   {
     "id": "serviteur_chaos",
     "nameFr": "Serviteur du Chaos",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 12,
     "levelMax": 28,
     "step": 2,
@@ -10153,7 +10153,7 @@
   {
     "id": "eclaireur_chaos",
     "nameFr": "Éclaireur du Chaos",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 14,
     "levelMax": 32,
     "step": 1,
@@ -10201,7 +10201,7 @@
   {
     "id": "soldat_chaos",
     "nameFr": "Soldat du Chaos",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 22,
     "levelMax": 42,
     "step": 2,
@@ -10252,7 +10252,7 @@
   {
     "id": "guerrier_chaos",
     "nameFr": "Guerrier du Chaos",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 32,
     "levelMax": 52,
     "step": 2,
@@ -10300,7 +10300,7 @@
   {
     "id": "champion_chaos",
     "nameFr": "Champion du Chaos",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 46,
     "levelMax": 66,
     "step": 2,
@@ -10348,7 +10348,7 @@
   {
     "id": "heros_chaos",
     "nameFr": "Héros du Chaos",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 60,
     "levelMax": 82,
     "step": 2,
@@ -10396,7 +10396,7 @@
   {
     "id": "ombre_chronos",
     "nameFr": "Ombre de Chronos",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 30,
     "levelMax": 50,
     "step": 2,
@@ -10443,7 +10443,7 @@
   {
     "id": "serviteur_hyperion",
     "nameFr": "Serviteur d'Hypérion",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 32,
     "levelMax": 52,
     "step": 2,
@@ -10491,7 +10491,7 @@
   {
     "id": "fils_japet",
     "nameFr": "Fils de Japet",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 34,
     "levelMax": 54,
     "step": 2,
@@ -10539,7 +10539,7 @@
   {
     "id": "gardien_oceanos",
     "nameFr": "Gardien d'Okéanos",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 36,
     "levelMax": 56,
     "step": 2,
@@ -10587,7 +10587,7 @@
   {
     "id": "fragment_nyx",
     "nameFr": "Fragment de Nyx",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 40,
     "levelMax": 60,
     "step": 1,
@@ -10637,7 +10637,7 @@
   {
     "id": "porteur_ananke",
     "nameFr": "Porteur d'Ananké",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 44,
     "levelMax": 64,
     "step": 2,
@@ -10685,7 +10685,7 @@
   {
     "id": "echo_hyperion",
     "nameFr": "Écho d'Hypérion",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 46,
     "levelMax": 66,
     "step": 1,
@@ -10732,7 +10732,7 @@
   {
     "id": "fils_atlas",
     "nameFr": "Fils d'Atlas",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 50,
     "levelMax": 68,
     "step": 3,
@@ -10780,7 +10780,7 @@
   {
     "id": "gardien_seuil",
     "nameFr": "Gardien du Seuil",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 52,
     "levelMax": 70,
     "step": 2,
@@ -10831,7 +10831,7 @@
   {
     "id": "ombre_chronos_ancien",
     "nameFr": "Ombre de Chronos ancien",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 54,
     "levelMax": 72,
     "step": 1,
@@ -10881,7 +10881,7 @@
   {
     "id": "primordial_noir",
     "nameFr": "Primordial noir",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 56,
     "levelMax": 74,
     "step": 2,
@@ -10929,7 +10929,7 @@
   {
     "id": "enfant_tartare",
     "nameFr": "Enfant du Tartare",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 58,
     "levelMax": 76,
     "step": 1,
@@ -10979,7 +10979,7 @@
   {
     "id": "ombre_primordiale",
     "nameFr": "Ombre primordiale",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 60,
     "levelMax": 78,
     "step": 1,
@@ -11029,7 +11029,7 @@
   {
     "id": "serviteur_nyx",
     "nameFr": "Serviteur de Nyx",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 62,
     "levelMax": 80,
     "step": 2,
@@ -11080,7 +11080,7 @@
   {
     "id": "ancien_enchaine",
     "nameFr": "Ancien enchaîné",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 64,
     "levelMax": 82,
     "step": 3,
@@ -11128,7 +11128,7 @@
   {
     "id": "echo_ananke",
     "nameFr": "Écho d'Ananké",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 66,
     "levelMax": 84,
     "step": 1,
@@ -11175,7 +11175,7 @@
   {
     "id": "gardien_primordial",
     "nameFr": "Gardien primordial",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 68,
     "levelMax": 84,
     "step": 3,
@@ -11226,7 +11226,7 @@
   {
     "id": "abisse",
     "nameFr": "Abîsse",
-    "family": "primordiaux",
+    "family": "primordial",
     "levelMin": 70,
     "levelMax": 84,
     "step": 2,
@@ -11276,7 +11276,7 @@
   {
     "id": "boss_atlas",
     "nameFr": "Atlas",
-    "family": "primordiaux",
+    "family": "primordial",
     "boss": true,
     "levelMin": 7,
     "levelMax": 28,
@@ -11326,7 +11326,7 @@
   {
     "id": "boss_hyperion",
     "nameFr": "Hypérion",
-    "family": "primordiaux",
+    "family": "primordial",
     "boss": true,
     "levelMin": 28,
     "levelMax": 49,
@@ -11374,7 +11374,7 @@
   {
     "id": "boss_nyx",
     "nameFr": "Nyx",
-    "family": "primordiaux",
+    "family": "primordial",
     "boss": true,
     "levelMin": 49,
     "levelMax": 70,
@@ -11424,7 +11424,7 @@
   {
     "id": "boss_tartare",
     "nameFr": "Tartare",
-    "family": "primordiaux",
+    "family": "primordial",
     "boss": true,
     "levelMin": 70,
     "levelMax": 84,

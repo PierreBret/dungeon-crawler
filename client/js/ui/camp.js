@@ -7,7 +7,7 @@ import { CAMP_OPTIONS }        from "../core/constants.js";
 import { getLayout }           from "../core/constants.js";
 import { MATERIALS }           from "../core/constants.js";
 import { drawPlayerCard }      from "./components/characterCard.js";
-import { gameData, getArmorName }            from "../core/gameData.js";
+import { gameData, getArmorName, getWeaponImagePath } from "../core/gameData.js";
 import { drawEquipPanel, getCompatibleItems } from "./components/equippanel.js";
 import { drawArmorEquipPanel, getArmorItemsForSlot } from "./components/equiparmorpanel.js";
 import { drawForgePanel, drawForgeResult } from "./components/forgepanel.js";
@@ -184,6 +184,10 @@ function drawRestPanel(ctx, x, y) {
 // ─── Détail item ──────────────────────────────────────────────────────────────
 
 function drawItemDetail(ctx, item, x, y, width) {
+  if (item.itemType === "shield") {
+    drawShieldDetail(ctx, item, x, y, width);
+    return;
+  }
   if (item.itemType !== "weapon") return;
 
   const weaponDef = gameData.weapons.find(w => w.code === item.itemCode);
@@ -204,8 +208,9 @@ function drawItemDetail(ctx, item, x, y, width) {
 
   // ─── Image ────────────────────────────────────────────────────────────────
 
-  if (weaponDef.image) {
-    const img = getOrLoadImage(weaponDef.image);
+  const imagePath = getWeaponImagePath(item.itemCode, item.tier);
+  if (imagePath) {
+    const img = getOrLoadImage(imagePath);
     if (img?.complete && img.naturalWidth > 0) {
       const ratio  = img.naturalWidth / img.naturalHeight;
       const drawH  = imgSize;
@@ -319,6 +324,61 @@ function drawItemDetail(ctx, item, x, y, width) {
 
     currentY += lineH + 6;
   }
+}
+
+// ─── Détail bouclier (panneau droit) ──────────────────────────────────────────
+
+function drawShieldDetail(ctx, item, x, y, width) {
+  const shieldDef = gameData.weapons.find(function findByCode(w) { return w.code === item.itemCode; });
+  if (!shieldDef) {
+    console.error(`drawShieldDetail: aucune def pour itemCode="${item.itemCode}"`);
+    return;
+  }
+
+  let currentY = y;
+  const lineH  = 24;
+  const imgSize = Math.min(width - 20, 140);
+
+  // ─── Image ────────────────────────────────────────────────────────────────
+
+  const imagePath = getWeaponImagePath(item.itemCode, item.tier);
+  if (imagePath) {
+    const img = getOrLoadImage(imagePath);
+    if (img?.complete && img.naturalWidth > 0) {
+      const ratio  = img.naturalWidth / img.naturalHeight;
+      const drawH  = imgSize;
+      const drawW  = Math.min(imgSize * ratio, width - 20);
+      const drawX  = x + (width - drawW) / 2;
+      ctx.drawImage(img, drawX, currentY, drawW, drawH);
+      currentY += drawH + 16;
+    } else {
+      currentY += 20;
+    }
+  }
+
+  // ─── Nom ──────────────────────────────────────────────────────────────────
+
+  const modelIndex = (item.tier ?? 1) - 1;
+  const modelName  = shieldDef.models?.[modelIndex] ?? shieldDef.typeArme;
+
+  ctx.fillStyle = "#d4a017";
+  ctx.font      = "bold 15px monospace";
+  ctx.fillText(modelName, x, currentY);
+  currentY += lineH + 4;
+
+  // ─── Infos ────────────────────────────────────────────────────────────────
+
+  function drawLine(label, value) {
+    ctx.fillStyle = "#888";
+    ctx.font      = "13px monospace";
+    ctx.fillText(label, x, currentY);
+    ctx.fillStyle = "white";
+    ctx.fillText(value, x + 140, currentY);
+    currentY += lineH;
+  }
+
+  drawLine("Type :",   shieldDef.typeArme);
+  drawLine("Poids :",  `${shieldDef.weight}`);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
