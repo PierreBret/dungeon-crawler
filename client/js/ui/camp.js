@@ -27,6 +27,50 @@ export function drawCamp(ctx, player, campState = {}) {
   drawLeftPanel(ctx, player, layout);
   drawCenterPanel(ctx, campState, layout, player);
   drawRightPanel(ctx, layout, campState);
+  if (campState.quitConfirm) drawQuitConfirmDialog(ctx, campState.quitConfirm);
+}
+
+function drawQuitConfirmDialog(ctx, confirm) {
+  const w = Math.min(500, ctx.canvas.width * 0.6);
+  const h = 130;
+  const x = (ctx.canvas.width - w) / 2;
+  const y = (ctx.canvas.height - h) / 2;
+  const padding = 20;
+  const btnW = 80;
+  const btnH = 28;
+  const btnY = y + h - btnH - padding;
+  const centerX = x + w / 2;
+  const choice = confirm.choice ?? 1;
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = "#d4a017";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+
+  ctx.fillStyle = "white";
+  ctx.font = "14px monospace";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText("Abandonner cette partie et commencer une nouvelle ?", centerX, y + padding);
+
+  drawQuitConfirmButton(ctx, "Oui", centerX - btnW - 12, btnY, btnW, btnH, choice === 0);
+  drawQuitConfirmButton(ctx, "Non", centerX + 12, btnY, btnW, btnH, choice === 1);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+}
+
+function drawQuitConfirmButton(ctx, label, x, y, w, h, isSelected) {
+  ctx.fillStyle = isSelected ? "#1a1a00" : "#2a2a2a";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = isSelected ? "#d4a017" : "#555";
+  ctx.lineWidth = isSelected ? 2 : 1;
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = isSelected ? "#d4a017" : "#888";
+  ctx.font = "13px monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(label, x + w / 2, y + 7);
 }
 
 // ─── Panneau gauche — carte joueur ───────────────────────────────────────────

@@ -10,6 +10,7 @@ import { handleArmorEquipKeys }  from "../ui/components/equiparmorpanel.js";
 import { handleForgeKeys }       from "../ui/components/forgepanel.js";
 import { TRAINABLE_STATS }       from "../ui/training.js";
 import { gameData, getArmorName }              from "./gameData.js";
+import { getRandomAvatarPaths } from "./assets.js";
 
 export function setupInput(state) {
   window.addEventListener("keydown", (e) => {
@@ -359,6 +360,8 @@ function launchNextFloor(state) {
     state.dungeon = response.state.dungeon;
     state.player  = response.state.player;
     state.config  = response.state.config;
+    state.exploredWalls.clear();
+    state.exploredSpecialLocations.clear();
   });
 }
 
@@ -457,6 +460,27 @@ function handleTrainingSelectInput(state, e) {
 function handleCampInput(state, e) {
   const camp = state.camp;
 
+  if (camp.quitConfirm) {
+    if (e.key === "ArrowLeft") {
+      camp.quitConfirm.choice = 0;
+      return;
+    }
+    if (e.key === "ArrowRight") {
+      camp.quitConfirm.choice = 1;
+      return;
+    }
+    if (e.key === "Escape") {
+      camp.quitConfirm = null;
+      return;
+    }
+    if (e.key === "Enter") {
+      const shouldQuit = camp.quitConfirm.choice === 0;
+      camp.quitConfirm = null;
+      if (shouldQuit) startNewGameFromCamp(state);
+    }
+    return;
+  }
+
   if (camp.mode !== "menu") {
     if (camp.mode === "equip") {
       handleEquipModeInput(state, e);
@@ -516,9 +540,27 @@ function handleCampAction(state, index) {
       state.camp.mode = "rest";
       break;
     case "quit":
-      state.screen = SCREENS.CHARACTER_CREATION;
+      state.camp.quitConfirm = { choice: 1 };
       break;
   }
+}
+
+function startNewGameFromCamp(state) {
+  socket.emit("game:candidates", { count: 3 }, function onCandidatesReceived(response) {
+    if (!response.ok) {
+      console.error("Erreur génération candidats :", response.error);
+      return;
+    }
+
+    const avatarPaths = getRandomAvatarPaths(response.candidates.length);
+    response.candidates.forEach((candidate, i) => {
+      candidate.avatarPath = avatarPaths[i];
+    });
+
+    state.characterCreation.candidates = response.candidates;
+    state.characterCreation.selectedIndex = 0;
+    state.screen = SCREENS.CHARACTER_CREATION;
+  });
 }
 
 function handleEquipModeInput(state, e) {
@@ -652,6 +694,8 @@ function selectCandidate(state, candidate) {
     state.player  = response.state.player;
     state.config  = response.state.config;
     state.devMode = response.state.devMode;
+    state.exploredWalls.clear();
+    state.exploredSpecialLocations.clear();
     state.screen  = SCREENS.CAMP;
   });
 }

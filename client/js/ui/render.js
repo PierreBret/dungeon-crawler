@@ -88,7 +88,7 @@ function computeVisibility(grid, position, devMode) {
   return visible;
 }
 
-export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode, scanResult) {
+export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode, scanResult, exploredWalls = new Set(), exploredSpecialLocations = new Set()) {
   if (!ctx || !dungeon || !player || !config) return;
 
   const { grid, creatures, forge, training, exit, treasure } = dungeon;
@@ -107,7 +107,14 @@ export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode,
 
   for (let y = 1; y < grid.length - 1; y++) {
     for (let x = 1; x < grid[y].length - 1; x++) {
-      if (!visible.has(`${x},${y}`)) continue;
+      const key = `${x},${y}`;
+      const isVisible = visible.has(key);
+
+      if (isVisible && grid[y][x] === 1) {
+        exploredWalls.add(key);
+      }
+
+      if (!isVisible && !(grid[y][x] === 1 && exploredWalls.has(key))) continue;
       ctx.fillStyle = grid[y][x] === 1 ? "#555" : "#222";
       ctx.fillRect((x - 1) * tileSize, (y - 1) * tileSize, tileSize, tileSize);
     }
@@ -122,21 +129,30 @@ export function drawDungeon(ctx, dungeon, player, config, treasureDrop, devMode,
     ctx.fillText(emoji, px, py);
   }
 
-  if (forge && visible.has(`${forge.x},${forge.y}`)) {
+  function isSpecialLocationVisible(type, location) {
+    const positionKey = `${location.x},${location.y}`;
+    const locationKey = `${type}:${positionKey}`;
+    if (visible.has(positionKey)) {
+      exploredSpecialLocations.add(locationKey);
+    }
+    return visible.has(positionKey) || exploredSpecialLocations.has(locationKey);
+  }
+
+  if (forge && isSpecialLocationVisible("forge", forge)) {
     drawEmoji(EMOJI.forge, forge.x, forge.y);
   }
 
-  if (training && visible.has(`${training.x},${training.y}`)) {
+  if (training && isSpecialLocationVisible("training", training)) {
     ctx.globalAlpha = training.used ? 0.3 : 1.0;
     drawEmoji(EMOJI.training, training.x, training.y);
     ctx.globalAlpha = 1.0;
   }
 
-  if (exit && visible.has(`${exit.x},${exit.y}`)) {
+  if (exit && isSpecialLocationVisible("exit", exit)) {
     drawEmoji(EMOJI.exit, exit.x, exit.y);
   }
 
-  if (treasure && !treasure.looted && visible.has(`${treasure.x},${treasure.y}`)) {
+  if (treasure && !treasure.looted && isSpecialLocationVisible("treasure", treasure)) {
     drawEmoji(EMOJI.treasure, treasure.x, treasure.y);
   }
 

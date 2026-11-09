@@ -41,6 +41,8 @@ export function initGame() {
       selectedIndex: 0
     },
     dungeon:  null,
+    exploredWalls: new Set(),
+    exploredSpecialLocations: new Set(),
     player:   null,
     config:   null,
     characterCreation: {
